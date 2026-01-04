@@ -78,6 +78,7 @@ class AgentInstance:
         if context_data is not None:
             self.agent._context_data = dict(context_data)
         self.agent.task = task
+        self.agent._prompt_tool_names = None
         events = await self.agent.execute(session_id=session_id)
         if self.agent.session_context:
             self.current_session_id = self.agent.session_context.session_id
