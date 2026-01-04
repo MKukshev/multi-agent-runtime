@@ -168,7 +168,7 @@ class Source(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
     session_id: Mapped[str] = mapped_column(String(36), ForeignKey("sessions.id"), nullable=False)
     uri: Mapped[str] = mapped_column(String(512), nullable=False)
-    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     session: Mapped[Session] = relationship("Session", back_populates="sources")

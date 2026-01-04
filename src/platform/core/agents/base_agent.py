@@ -18,7 +18,7 @@ class AgentRegistryMixin:
     def __init_subclass__(cls, **kwargs: Any) -> None:  # noqa: D401
         """Register every subclass except the abstract base class."""
         super().__init_subclass__(**kwargs)
-        if cls is not BaseAgent:
+        if cls.__name__ != "BaseAgent":
             cls.agent_registry.register(cls)
 
 

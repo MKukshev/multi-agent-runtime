@@ -1,12 +1,14 @@
 from pathlib import Path
 
+import asyncio
 import pytest
-try:
-    from alembic import command
-    from alembic.config import Config
-except ImportError:  # pragma: no cover - optional dependency guard for CI environments without alembic
-    pytest.skip("alembic is required for persistence tests", allow_module_level=True)
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+try:
+    import aiosqlite  # noqa: F401
+except ImportError:  # pragma: no cover - optional dependency guard for environments without aiosqlite
+    pytest.skip("aiosqlite is required for persistence tests", allow_module_level=True)
 
 from platform.persistence import (
     AgentInstanceRepository,
@@ -14,16 +16,20 @@ from platform.persistence import (
     TemplateRepository,
     ToolRepository,
 )
+from platform.persistence.models import Base
 
 
 def run_migrations(db_path: Path) -> None:
-    cfg = Config("src/platform/persistence/migrations/alembic.ini")
-    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
-    command.upgrade(cfg, "head")
+    engine = create_engine(f"sqlite:///{db_path}")
+    Base.metadata.create_all(engine)
+    engine.dispose()
 
 
-@pytest.mark.asyncio
-async def test_create_and_read_entities(tmp_path: Path) -> None:
+def test_create_and_read_entities(tmp_path: Path) -> None:
+    asyncio.run(_test_create_and_read_entities(tmp_path))
+
+
+async def _test_create_and_read_entities(tmp_path: Path) -> None:
     db_path = tmp_path / "test.db"
     run_migrations(db_path)
 

@@ -258,7 +258,7 @@ class SessionRepository:
         return result.all()
 
     async def add_source(self, session_id: str, uri: str, metadata: Optional[dict] = None) -> Source:
-        source = Source(session_id=session_id, uri=uri, metadata=metadata or {})
+        source = Source(session_id=session_id, uri=uri, metadata_json=metadata or {})
         self.session.add(source)
         await self.session.flush()
         return source
