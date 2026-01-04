@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from platform.runtime import ChatMessage
 from platform.core.agents.base_agent import BaseAgent
 from platform.core.streaming.openai_sse import SSEEvent
 from platform.core.tools.base_tool import BaseTool
@@ -13,10 +14,21 @@ class SimpleAgent(BaseAgent):
 
     name = "simple_agent"
 
-    def __init__(self, task: str, toolkit=None, prompts_config=None) -> None:
-        super().__init__(task=task, toolkit=toolkit or [EchoTool], prompts_config=prompts_config)
+    def __init__(self, task: str, toolkit=None, prompts_config=None, **kwargs) -> None:
+        super().__init__(task=task, toolkit=toolkit or [EchoTool], prompts_config=prompts_config, **kwargs)
 
     async def run(self) -> Iterable[SSEEvent]:
+        await self._ensure_session_state()
+        system_prompt = self._system_prompt()
+        if system_prompt:
+            await self._record_message(ChatMessage.text("system", system_prompt))
+
+        user_prompt = self._initial_user_request()
+        await self._record_message(ChatMessage.text("user", user_prompt))
+
         intro = f"Using tools: {', '.join(self.available_tools) or 'none'}"
         message = f"Task: {self.task}"
-        return self.streaming_generator.stream_text(f"{intro}\n{message}")
+        response_text = f"{intro}\n{message}"
+
+        await self._record_message(ChatMessage.text("assistant", response_text))
+        return self.streaming_generator.stream_text(response_text)
