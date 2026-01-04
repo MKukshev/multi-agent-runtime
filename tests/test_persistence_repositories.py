@@ -93,5 +93,6 @@ async def test_create_and_read_entities(tmp_path: Path) -> None:
 
         loaded_instance = await instance_repo.get_instance(instance.id)
         assert loaded_instance.session_id == session_obj.id
+        assert loaded_instance.template_id == template.id
 
     await engine.dispose()

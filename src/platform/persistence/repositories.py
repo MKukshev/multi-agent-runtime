@@ -284,14 +284,46 @@ class AgentInstanceRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create_instance(self, template_version_id: str, status: str = "IDLE") -> AgentInstance:
-        instance = AgentInstance(template_version_id=template_version_id, status=status)
+    async def create_instance(
+        self,
+        template_version_id: str,
+        *,
+        template_id: str | None = None,
+        status: str = "IDLE",
+    ) -> AgentInstance:
+        template_identifier = template_id
+        if template_identifier is None:
+            template_version = await self.session.get(TemplateVersion, template_version_id)
+            if template_version is None:
+                msg = f"TemplateVersion {template_version_id} not found"
+                raise ValueError(msg)
+            template_identifier = template_version.template_id
+
+        instance = AgentInstance(template_id=template_identifier, template_version_id=template_version_id, status=status)
         self.session.add(instance)
         await self.session.flush()
         return instance
 
     async def get_instance(self, instance_id: str) -> Optional[AgentInstance]:
-        return await self.session.get(AgentInstance, instance_id)
+        result = await self.session.scalars(select(AgentInstance).where(AgentInstance.id == instance_id))
+        return result.first()
+
+    async def list_instances(
+        self,
+        *,
+        template_id: str | None = None,
+        template_version_id: str | None = None,
+        status: str | None = None,
+    ) -> Sequence[AgentInstance]:
+        stmt = select(AgentInstance)
+        if template_id:
+            stmt = stmt.where(AgentInstance.template_id == template_id)
+        if template_version_id:
+            stmt = stmt.where(AgentInstance.template_version_id == template_version_id)
+        if status:
+            stmt = stmt.where(AgentInstance.status == status)
+        result = await self.session.scalars(stmt.order_by(AgentInstance.created_at))
+        return result.all()
 
     async def claim_instance(self, instance_id: str, session_id: str, status: str = "BUSY") -> Optional[AgentInstance]:
         instance = await self.get_instance(instance_id)
