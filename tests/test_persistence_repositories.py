@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 import pytest
 try:
@@ -22,12 +23,12 @@ def run_migrations(db_path: Path) -> None:
     command.upgrade(cfg, "head")
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_create_and_read_entities(tmp_path: Path) -> None:
     db_path = tmp_path / "test.db"
     run_migrations(db_path)
 
-    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True)
+    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True, module=sqlite3)
     session_factory: async_sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
 
     async with session_factory() as session:

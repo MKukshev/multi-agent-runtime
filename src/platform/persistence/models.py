@@ -56,7 +56,7 @@ class AgentTemplate(Base):
     )
 
     versions: Mapped[List["TemplateVersion"]] = relationship(
-        back_populates="template", cascade="all, delete-orphan"
+        back_populates="template", cascade="all, delete-orphan", foreign_keys="TemplateVersion.template_id"
     )
     active_version: Mapped[Optional["TemplateVersion"]] = relationship(
         "TemplateVersion", foreign_keys=[active_version_id], post_update=True
@@ -76,7 +76,9 @@ class TemplateVersion(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
-    template: Mapped[AgentTemplate] = relationship("AgentTemplate", back_populates="versions")
+    template: Mapped[AgentTemplate] = relationship(
+        "AgentTemplate", back_populates="versions", foreign_keys=[template_id]
+    )
     sessions: Mapped[List["Session"]] = relationship(
         back_populates="template_version", cascade="all, delete-orphan"
     )
@@ -168,7 +170,7 @@ class Source(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
     session_id: Mapped[str] = mapped_column(String(36), ForeignKey("sessions.id"), nullable=False)
     uri: Mapped[str] = mapped_column(String(512), nullable=False)
-    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     session: Mapped[Session] = relationship("Session", back_populates="sources")
