@@ -61,6 +61,9 @@ class AgentTemplate(Base):
     active_version: Mapped[Optional["TemplateVersion"]] = relationship(
         "TemplateVersion", foreign_keys=[active_version_id], post_update=True
     )
+    agent_instances: Mapped[List["AgentInstance"]] = relationship(
+        "AgentInstance", back_populates="template", cascade="all, delete-orphan"
+    )
 
 
 class TemplateVersion(Base):
@@ -153,6 +156,7 @@ class AgentInstance(Base):
     __tablename__ = "agent_instances"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    template_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_templates.id"), nullable=False)
     template_version_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("template_versions.id"), nullable=False
     )
@@ -161,6 +165,7 @@ class AgentInstance(Base):
     last_heartbeat: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
+    template: Mapped[AgentTemplate] = relationship("AgentTemplate", back_populates="agent_instances", lazy="joined")
     template_version: Mapped[TemplateVersion] = relationship("TemplateVersion", back_populates="agent_instances")
     session: Mapped[Optional[Session]] = relationship("Session", back_populates="agent_instances")
 
