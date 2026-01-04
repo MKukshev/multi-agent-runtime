@@ -115,17 +115,21 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
 
-    op.create_foreign_key(
-        "fk_agent_templates_active_version",
-        source_table="agent_templates",
-        referent_table="template_versions",
-        local_cols=["active_version_id"],
-        remote_cols=["id"],
-    )
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        op.create_foreign_key(
+            "fk_agent_templates_active_version",
+            source_table="agent_templates",
+            referent_table="template_versions",
+            local_cols=["active_version_id"],
+            remote_cols=["id"],
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_agent_templates_active_version", "agent_templates", type_="foreignkey")
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        op.drop_constraint("fk_agent_templates_active_version", "agent_templates", type_="foreignkey")
     op.drop_table("agent_instances")
     op.drop_table("artifacts")
     op.drop_table("sources")
