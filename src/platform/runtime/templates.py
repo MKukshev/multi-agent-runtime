@@ -51,6 +51,7 @@ class TemplateRuntimeConfig(BaseModel):
     tool_policy: ToolPolicy
     tools: list[str] = Field(default_factory=list)
     prompt: Optional[str] = None
+    rules: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class TemplateService:
@@ -76,6 +77,7 @@ class TemplateService:
         prompt: Optional[str] = None,
         version: Optional[int] = None,
         activate: bool = False,
+        rules: Optional[Sequence[dict[str, Any]]] = None,
     ) -> TemplateVersion:
         llm_policy_model = self._as_model(LLMPolicy, llm_policy)
         prompts_model = self._as_model(PromptConfig, prompts) if prompts is not None else PromptConfig()
@@ -89,6 +91,7 @@ class TemplateService:
             "prompts": prompts_model.model_dump(),
             "execution_policy": execution_policy_model.model_dump(),
             "tool_policy": tool_policy_model.model_dump(),
+            "rules": list(rules or []),
         }
 
         async with self._session_factory() as session:
@@ -139,6 +142,7 @@ class TemplateService:
         prompts = PromptConfig(**settings.get("prompts", {}))
         execution_policy = ExecutionPolicy(**settings.get("execution_policy", {}))
         tool_policy = ToolPolicy(**settings.get("tool_policy", {}))
+        rules = list(settings.get("rules", []))
 
         return TemplateRuntimeConfig(
             template_id=template.id,
@@ -151,4 +155,5 @@ class TemplateService:
             tool_policy=tool_policy,
             tools=version.tools,
             prompt=version.prompt,
+            rules=rules,
         )

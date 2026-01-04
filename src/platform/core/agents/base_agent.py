@@ -10,7 +10,8 @@ from platform.core.streaming.openai_sse import OpenAIStreamingGenerator, SSEEven
 from platform.core.tools.base_tool import BaseTool
 from platform.retrieval import ToolSearchService
 from platform.runtime.session_service import ChatMessage, MessageStore, SessionContext, SessionService
-from platform.runtime.templates import ToolPolicy
+from platform.runtime.templates import TemplateRuntimeConfig, ToolPolicy
+from platform.security import RulePhase, RulesEngine
 
 
 class AgentRegistryMixin:
@@ -47,6 +48,8 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         context_data: dict[str, Any] | None = None,
         tool_policy: ToolPolicy | dict[str, Any] | None = None,
         tool_search_service: ToolSearchService | None = None,
+        template_config: TemplateRuntimeConfig | None = None,
+        rules_engine: RulesEngine | None = None,
     ) -> None:
         self.id = f"{self.name}_{uuid.uuid4()}"
         self.task = task
@@ -59,10 +62,13 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         self.template_version_id = template_version_id
         self.tool_policy = tool_policy if isinstance(tool_policy, ToolPolicy) else ToolPolicy(**(tool_policy or {}))
         self.tool_search_service = tool_search_service
+        self.template_config = template_config
+        self.rules_engine = rules_engine or RulesEngine()
         self._prompt_tool_names: list[str] | None = None
         self._context_data: dict[str, Any] = (
             dict(context_data) if context_data is not None else dict(getattr(session_context, "data", {}) or {})
         )
+        self._stage: str | None = None
 
     @property
     def available_tools(self) -> Sequence[str]:
@@ -88,6 +94,12 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
 
         policy = self.tool_policy or ToolPolicy()
         available = self.available_tools
+        pre_rule_decision = None
+        if self.rules_engine:
+            pre_rule_decision = self.rules_engine.evaluate(
+                self.session_context, self.template_config, phase=RulePhase.PRE_RETRIEVAL
+            )
+            available = pre_rule_decision.apply(available)
 
         if self.tool_search_service:
             session_id = self.session_context.session_id if self.session_context else self.id
@@ -105,6 +117,17 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
 
         if policy.max_tools_in_prompt:
             names = names[: policy.max_tools_in_prompt]
+
+        if self.rules_engine:
+            post_rule_decision = self.rules_engine.evaluate(
+                self.session_context, self.template_config, phase=RulePhase.POST_RETRIEVAL
+            )
+            names = post_rule_decision.apply(names)
+            self._stage = (
+                post_rule_decision.stage
+                or (pre_rule_decision.stage if pre_rule_decision else None)
+                or self._stage
+            )
 
         self._prompt_tool_names = names
         return names
