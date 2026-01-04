@@ -6,6 +6,8 @@ from typing import Any, Optional, Sequence
 
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from platform.retrieval.embeddings import EmbeddingProvider
 from platform.persistence import AgentTemplate, TemplateRepository, TemplateVersion
@@ -133,6 +135,32 @@ class TemplateService:
             version = await session.get(TemplateVersion, template.active_version_id)
             return self._build_runtime_config(template, version) if version else None
 
+    async def get_runtime_config_for_version(self, version_id: str) -> Optional[TemplateRuntimeConfig]:
+        async with self._session_factory() as session:
+            version = await self._get_version_with_template(session, version_id)
+            if version is None:
+                return None
+            template = version.template
+            return self._build_runtime_config(template, version) if template else None
+
+    async def list_active_models(self) -> list[TemplateRuntimeConfig]:
+        async with self._session_factory() as session:
+            repo = TemplateRepository(session)
+            templates = await repo.list_templates()
+            active_configs: list[TemplateRuntimeConfig] = []
+            for template in templates:
+                if template.active_version_id is None:
+                    continue
+                version = await self._get_version_with_template(session, template.active_version_id)
+                if version is None:
+                    continue
+                active_configs.append(self._build_runtime_config(template, version))
+            return active_configs
+
+    async def get_version_with_template(self, version_id: str) -> TemplateVersion | None:
+        async with self._session_factory() as session:
+            return await self._get_version_with_template(session, version_id)
+
     @staticmethod
     def _as_model(model_cls: type[BaseModel], value: BaseModel | dict[str, Any]) -> BaseModel:
         if isinstance(value, model_cls):
@@ -164,3 +192,13 @@ class TemplateService:
             prompt=version.prompt,
             rules=rules,
         )
+
+    @staticmethod
+    async def _get_version_with_template(session: AsyncSession, version_id: str) -> TemplateVersion | None:
+        stmt = (
+            select(TemplateVersion)
+            .options(selectinload(TemplateVersion.template))
+            .where(TemplateVersion.id == version_id)
+        )
+        result = await session.scalars(stmt)
+        return result.first()
