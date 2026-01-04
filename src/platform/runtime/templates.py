@@ -7,6 +7,7 @@ from typing import Any, Optional, Sequence
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from platform.retrieval.embeddings import EmbeddingProvider
 from platform.persistence import AgentTemplate, TemplateRepository, TemplateVersion
 
 
@@ -55,8 +56,9 @@ class TemplateRuntimeConfig(BaseModel):
 
 
 class TemplateService:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession], *, embedding_provider: EmbeddingProvider | None = None):
         self._session_factory = session_factory
+        self._embedding_provider = embedding_provider or EmbeddingProvider()
 
     async def create(self, name: str, description: Optional[str] = None) -> AgentTemplate:
         async with self._session_factory() as session:
@@ -78,6 +80,7 @@ class TemplateService:
         version: Optional[int] = None,
         activate: bool = False,
         rules: Optional[Sequence[dict[str, Any]]] = None,
+        embedding_text: Optional[str] = None,
     ) -> TemplateVersion:
         llm_policy_model = self._as_model(LLMPolicy, llm_policy)
         prompts_model = self._as_model(PromptConfig, prompts) if prompts is not None else PromptConfig()
@@ -85,6 +88,9 @@ class TemplateService:
             self._as_model(ExecutionPolicy, execution_policy) if execution_policy is not None else ExecutionPolicy()
         )
         tool_policy_model = self._as_model(ToolPolicy, tool_policy) if tool_policy is not None else ToolPolicy()
+        embedding_vector = None
+        if embedding_text:
+            embedding_vector = (await self._embedding_provider.embed_text(embedding_text)).vector
 
         settings = {
             "llm_policy": llm_policy_model.model_dump(),
@@ -100,6 +106,7 @@ class TemplateService:
                 template_id,
                 version=version,
                 settings=settings,
+                embedding=embedding_vector,
                 prompt=prompt or prompts_model.system,
                 tools=list(tools) if tools is not None else [],
                 is_active=activate,

@@ -71,6 +71,7 @@ class TemplateVersion(Base):
     template_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_templates.id"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
+    embedding: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tools: Mapped[list] = mapped_column(JSON, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
