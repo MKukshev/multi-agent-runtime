@@ -46,6 +46,7 @@ def upgrade() -> None:
         sa.Column("template_id", sa.String(length=36), sa.ForeignKey("agent_templates.id"), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False),
         sa.Column("settings", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
+        sa.Column("embedding", sa.JSON(), nullable=True),
         sa.Column("prompt", sa.Text(), nullable=True),
         sa.Column("tools", sa.JSON(), nullable=False, server_default=sa.text("'[]'")),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("0")),

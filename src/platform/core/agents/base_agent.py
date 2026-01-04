@@ -8,7 +8,7 @@ from platform.core.services.prompt_loader import PromptsConfig, PromptLoader
 from platform.core.services.registry import AgentRegistry
 from platform.core.streaming.openai_sse import OpenAIStreamingGenerator, SSEEvent
 from platform.core.tools.base_tool import BaseTool
-from platform.retrieval import ToolSearchService
+from platform.retrieval.tool_search import ToolSearchService
 from platform.runtime.session_service import ChatMessage, MessageStore, SessionContext, SessionService
 from platform.runtime.templates import TemplateRuntimeConfig, ToolPolicy
 from platform.security import RulePhase, RulesEngine
