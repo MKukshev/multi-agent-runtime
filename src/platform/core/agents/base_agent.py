@@ -4,7 +4,7 @@ import abc
 import uuid
 from typing import Any, ClassVar, Iterable, List, Sequence, Type
 
-from platform.runtime import ChatMessage, MessageStore, SessionContext, SessionService
+from platform.runtime.session_service import ChatMessage, MessageStore, SessionContext, SessionService
 from platform.core.services.prompt_loader import PromptsConfig, PromptLoader
 from platform.core.services.registry import AgentRegistry
 from platform.core.streaming.openai_sse import OpenAIStreamingGenerator, SSEEvent
@@ -19,8 +19,12 @@ class AgentRegistryMixin:
     def __init_subclass__(cls, **kwargs: Any) -> None:  # noqa: D401
         """Register every subclass except the abstract base class."""
         super().__init_subclass__(**kwargs)
-        if cls is not BaseAgent:
+        if cls.__name__ != "BaseAgent":
             cls.agent_registry.register(cls)
+
+
+class WaitingForClarification(RuntimeError):
+    """Signal that the agent requires external clarification before continuing."""
 
 
 class BaseAgent(AgentRegistryMixin, abc.ABC):
@@ -108,3 +112,43 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
             await self.session_service.save_message(self.session_context.session_id, message)
         await self._persist_context()
         return message
+
+    def reset(self) -> None:
+        """Clear session-scoped state so the agent can handle a new session."""
+
+        self.session_context = None
+        self.message_store = None
+        self._context_data = {}
+
+    async def execute(self, *, session_id: str | None = None) -> Iterable[SSEEvent]:
+        """Run the agent workflow with persistence-aware state handling."""
+
+        if session_id:
+            if not self.session_service:
+                msg = "session_service is required to resume a session"
+                raise ValueError(msg)
+            self.session_context, self.message_store = await self.session_service.resume_session(session_id)
+            self._context_data = dict(self.session_context.data)
+
+        await self._ensure_session_state()
+        if self.session_service:
+            await self.session_service.set_state(self.session_context.session_id, "ACTIVE")
+
+        try:
+            events = await self.run()
+            if self.session_service:
+                await self.session_service.set_state(self.session_context.session_id, "COMPLETED")
+            return events
+        except WaitingForClarification:
+            if self.session_service:
+                await self.session_service.set_state(self.session_context.session_id, "WAITING")
+            return []
+        except Exception:
+            if self.session_service and self.session_context:
+                await self.session_service.set_state(self.session_context.session_id, "FAILED")
+            raise
+
+    async def resume(self, session_id: str) -> Iterable[SSEEvent]:
+        """Resume execution for an existing session."""
+
+        return await self.execute(session_id=session_id)
