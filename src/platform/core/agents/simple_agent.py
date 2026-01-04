@@ -19,6 +19,7 @@ class SimpleAgent(BaseAgent):
 
     async def run(self) -> Iterable[SSEEvent]:
         await self._ensure_session_state()
+        await self._refresh_prompt_tools()
         system_prompt = self._system_prompt()
         if system_prompt:
             await self._record_message(ChatMessage.text("system", system_prompt))

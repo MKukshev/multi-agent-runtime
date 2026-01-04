@@ -4,11 +4,13 @@ import abc
 import uuid
 from typing import Any, ClassVar, Iterable, List, Sequence, Type
 
-from platform.runtime.session_service import ChatMessage, MessageStore, SessionContext, SessionService
 from platform.core.services.prompt_loader import PromptsConfig, PromptLoader
 from platform.core.services.registry import AgentRegistry
 from platform.core.streaming.openai_sse import OpenAIStreamingGenerator, SSEEvent
 from platform.core.tools.base_tool import BaseTool
+from platform.retrieval import ToolSearchService
+from platform.runtime.session_service import ChatMessage, MessageStore, SessionContext, SessionService
+from platform.runtime.templates import ToolPolicy
 
 
 class AgentRegistryMixin:
@@ -43,6 +45,8 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         message_store: MessageStore | None = None,
         template_version_id: str | None = None,
         context_data: dict[str, Any] | None = None,
+        tool_policy: ToolPolicy | dict[str, Any] | None = None,
+        tool_search_service: ToolSearchService | None = None,
     ) -> None:
         self.id = f"{self.name}_{uuid.uuid4()}"
         self.task = task
@@ -53,6 +57,9 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         self.session_context = session_context
         self.message_store = message_store
         self.template_version_id = template_version_id
+        self.tool_policy = tool_policy if isinstance(tool_policy, ToolPolicy) else ToolPolicy(**(tool_policy or {}))
+        self.tool_search_service = tool_search_service
+        self._prompt_tool_names: list[str] | None = None
         self._context_data: dict[str, Any] = (
             dict(context_data) if context_data is not None else dict(getattr(session_context, "data", {}) or {})
         )
@@ -65,11 +72,62 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
     async def run(self) -> Iterable[SSEEvent]:
         """Execute the agent workflow and yield SSE events."""
 
+    @property
+    def prompt_tool_names(self) -> list[str]:
+        return list(self._prompt_tool_names or self.available_tools)
+
     def _system_prompt(self) -> str:
-        return PromptLoader.get_system_prompt(self.available_tools, self.prompts_config)
+        return PromptLoader.get_system_prompt(self.prompt_tool_names, self.prompts_config)
 
     def _initial_user_request(self) -> str:
         return PromptLoader.get_initial_user_request(self.task, self.prompts_config)
+
+    async def _refresh_prompt_tools(self) -> list[str]:
+        if self._prompt_tool_names is not None:
+            return self._prompt_tool_names
+
+        policy = self.tool_policy or ToolPolicy()
+        available = self.available_tools
+
+        if self.tool_search_service:
+            session_id = self.session_context.session_id if self.session_context else self.id
+            search_result = await self.tool_search_service.search(
+                session_id=session_id,
+                query=self.task,
+                policy=policy,
+                available_tools=available,
+                required_tools=policy.required_tools,
+                top_k=policy.max_tools_in_prompt,
+            )
+            names = [tool.name for tool in search_result.tools]
+        else:
+            names = self._apply_policy_filters(available, policy)
+
+        if policy.max_tools_in_prompt:
+            names = names[: policy.max_tools_in_prompt]
+
+        self._prompt_tool_names = names
+        return names
+
+    @staticmethod
+    def _apply_policy_filters(available: Sequence[str], policy: ToolPolicy) -> list[str]:
+        required = list(dict.fromkeys(policy.required_tools or []))
+        allowlist = set(policy.allowlist or [])
+        denylist = set(policy.denylist or [])
+
+        filtered: list[str] = []
+        for name in available:
+            if allowlist and name not in allowlist and name not in required:
+                continue
+            if name in denylist:
+                continue
+            filtered.append(name)
+        ordered: list[str] = []
+        for name in required:
+            if name in filtered:
+                ordered.append(name)
+        ordered.extend([name for name in filtered if name not in required])
+        return ordered
 
     async def _ensure_session_state(self) -> None:
         if self.session_service:
@@ -119,6 +177,7 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         self.session_context = None
         self.message_store = None
         self._context_data = {}
+        self._prompt_tool_names = None
 
     async def execute(self, *, session_id: str | None = None) -> Iterable[SSEEvent]:
         """Run the agent workflow with persistence-aware state handling."""
