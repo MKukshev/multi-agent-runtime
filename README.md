@@ -55,19 +55,32 @@ pip install -e .
 - Сервис держит живые агентные сессии, запускает/останавливает их по сигналам от gateway.
 
 ### Admin API
-- CRUD для инструментов и шаблонов будет развёрнут как отдельный FastAPI-приложение:
+- CRUD для инструментов и шаблонов развёрнут как FastAPI-приложение:
   ```bash
-  uvicorn platform.admin.main:app --reload --port 8001
+  export DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/maruntime
+  export ADMIN_API_KEY=<optional-api-key>
+  python -m scripts.run_admin
   ```
-- Через Admin API можно публиковать инструменты и выдавать их в каталог.
+- Через Admin API можно публиковать инструменты и выдавать их в каталог. По умолчанию слушает `0.0.0.0:8001` и принимает заголовок `X-API-Key`, если задан `ADMIN_API_KEY`.
 
 ## Миграции и база данных
-- Генерация и применение миграций (после добавления `alembic.ini` и каталога миграций):
+- Инициализация и миграции управляются из `scripts/db.py`:
   ```bash
-  alembic revision --autogenerate -m "init"
-  alembic upgrade head
+  export DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/maruntime
+  python -m scripts.db init --url "${DATABASE_URL}"
+  python -m scripts.db upgrade --url "${DATABASE_URL}"         # downgrade аналогично
   ```
-- Для SQLite достаточно выставить `DATABASE_URL=sqlite+aiosqlite:///./dev.db`.
+- Для SQLite используйте `DATABASE_URL=sqlite+aiosqlite:///./dev.db`. Команда `init` создаёт схему через SQLAlchemy и проставляет ревизию Alembic (`head`).
+
+### Наполнение каталога инструментов и шаблонов
+- Сценарий `scripts/seed_catalog.py` подтянет определения инструментов и агентов из `sgr-agent-core`:
+  ```bash
+  export DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/maruntime
+  python -m scripts.seed_catalog --url "${DATABASE_URL}" \
+    --repo-url https://github.com/sourcegraph/sgr-agent-core.git \
+    --branch main --branch sgr-memory-agent
+  ```
+- Можно передать `--repo-path` с локальной копией репозитория; по умолчанию версии помечаются активными (если они новые).
 
 ## Тестирование и статические проверки
 - Сборка пакета в editable-режиме: уже выполнена при установке.
