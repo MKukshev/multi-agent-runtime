@@ -4,13 +4,14 @@ import abc
 import uuid
 from typing import Any, ClassVar, Iterable, List, Sequence, Type
 
+from platform.core.llm import LLMClientFactory, content_to_text
 from platform.core.services.prompt_loader import PromptsConfig, PromptLoader
 from platform.core.services.registry import AgentRegistry
 from platform.core.streaming.openai_sse import OpenAIStreamingGenerator, SSEEvent
 from platform.core.tools.base_tool import BaseTool
 from platform.retrieval.tool_search import ToolSearchService
 from platform.runtime.session_service import ChatMessage, MessageStore, SessionContext, SessionService
-from platform.runtime.templates import TemplateRuntimeConfig, ToolPolicy
+from platform.runtime.templates import LLMPolicy, TemplateRuntimeConfig, ToolPolicy
 from platform.security import RulePhase, RulesEngine
 
 
@@ -50,6 +51,7 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         tool_search_service: ToolSearchService | None = None,
         template_config: TemplateRuntimeConfig | None = None,
         rules_engine: RulesEngine | None = None,
+        llm_client_factory: LLMClientFactory | None = None,
     ) -> None:
         self.id = f"{self.name}_{uuid.uuid4()}"
         self.task = task
@@ -64,6 +66,7 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         self.tool_search_service = tool_search_service
         self.template_config = template_config
         self.rules_engine = rules_engine or RulesEngine()
+        self._llm_client_factory = llm_client_factory or LLMClientFactory()
         self._prompt_tool_names: list[str] | None = None
         self._context_data: dict[str, Any] = (
             dict(context_data) if context_data is not None else dict(getattr(session_context, "data", {}) or {})
@@ -234,3 +237,76 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         """Resume execution for an existing session."""
 
         return await self.execute(session_id=session_id)
+
+    def _require_llm_policy(self) -> LLMPolicy:
+        if self.template_config is None or self.template_config.llm_policy is None:
+            raise ValueError("template_config with llm_policy is required to call the LLM")
+        return self.template_config.llm_policy
+
+    def _build_chat_request(
+        self,
+        policy: LLMPolicy,
+        messages: list[dict[str, Any]],
+        *,
+        stream: bool | None = None,
+        **overrides: Any,
+    ) -> dict[str, Any]:
+        request: dict[str, Any] = {"model": policy.model, "messages": messages, "stream": policy.streaming if stream is None else stream}
+        if policy.temperature is not None:
+            request["temperature"] = policy.temperature
+        if policy.max_tokens is not None:
+            request["max_tokens"] = policy.max_tokens
+        request.update(overrides)
+        return request
+
+    async def _create_completion(
+        self, messages: list[dict[str, Any]], *, stream: bool | None = None, **overrides: Any
+    ) -> Any:
+        policy = self._require_llm_policy()
+        client = self._llm_client_factory.for_policy(policy)
+        payload = self._build_chat_request(policy, messages, stream=stream, **overrides)
+        return await client.chat.completions.create(**payload)
+
+    @staticmethod
+    def _extract_choice(node: Any) -> Any:
+        choices = getattr(node, "choices", None)
+        if choices:
+            return choices[0]
+        if isinstance(node, dict):
+            items = node.get("choices")
+            if items:
+                return items[0]
+        return None
+
+    async def _completion_text(self, completion: Any) -> str:
+        if hasattr(completion, "__aiter__"):
+            parts: list[str] = []
+            async for chunk in completion:
+                choice = self._extract_choice(chunk)
+                delta = getattr(choice, "delta", None) if choice is not None else None
+                if delta is None:
+                    continue
+                content = getattr(delta, "content", getattr(delta, "text", delta))
+                parts.append(content_to_text(content))
+            return "".join(parts)
+
+        choice = self._extract_choice(completion)
+        if choice is None:
+            return ""
+        message = getattr(choice, "message", choice)
+        content = getattr(message, "content", getattr(message, "text", message))
+        return content_to_text(content)
+
+    async def _generate_llm_response(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        stream: bool | None = None,
+        record_message: bool = True,
+        **overrides: Any,
+    ) -> Iterable[SSEEvent]:
+        completion = await self._create_completion(messages, stream=stream, **overrides)
+        content = await self._completion_text(completion)
+        if record_message:
+            await self._record_message(ChatMessage.text("assistant", content))
+        return self.streaming_generator.stream_text(content)

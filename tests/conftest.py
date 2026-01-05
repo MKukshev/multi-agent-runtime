@@ -8,9 +8,12 @@ from types import ModuleType
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_PATH = PROJECT_ROOT / "src"
+TESTS_PATH = PROJECT_ROOT / "tests"
 
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
+if str(TESTS_PATH) not in sys.path:
+    sys.path.insert(0, str(TESTS_PATH))
 
 stdlib_platform = importlib.import_module("platform")
 platform_proxy = ModuleType("platform")

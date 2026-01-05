@@ -36,7 +36,7 @@ pip install -e .
   export DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/maruntime
   export OPENAI_API_KEY=<key>  # при использовании проксирующих запросов
   ```
-- Запустите приложение (после появления модуля в `src/platform/gateway`):
+- Запустите приложение (модуль `src/platform/gateway/main.py` поднимает FastAPI-приложение и подключает зависимости):
   ```bash
   uvicorn platform.gateway.main:app --reload --host 0.0.0.0 --port 8000
   ```
@@ -71,6 +71,7 @@ pip install -e .
   python -m scripts.db upgrade --url "${DATABASE_URL}"         # downgrade аналогично
   ```
 - Для SQLite используйте `DATABASE_URL=sqlite+aiosqlite:///./dev.db`. Команда `init` создаёт схему через SQLAlchemy и проставляет ревизию Alembic (`head`).
+- Активные миграции находятся в корневом каталоге `alembic/versions`; устаревший путь `src/platform/persistence/migrations` удалён, чтобы не дублировать миграции.
 
 ### Наполнение каталога инструментов и шаблонов
 - Сценарий `scripts/seed_catalog.py` подтянет определения инструментов и агентов из `sgr-agent-core`:

@@ -2,11 +2,6 @@ from pathlib import Path
 import sqlite3
 
 import pytest
-try:
-    from alembic import command
-    from alembic.config import Config
-except ImportError:  # pragma: no cover - optional dependency guard for CI environments without alembic
-    pytest.skip("alembic is required for persistence tests", allow_module_level=True)
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from platform.persistence import (
@@ -15,18 +10,13 @@ from platform.persistence import (
     TemplateRepository,
     ToolRepository,
 )
-
-
-def run_migrations(db_path: Path) -> None:
-    cfg = Config("src/platform/persistence/migrations/alembic.ini")
-    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
-    command.upgrade(cfg, "head")
+from utils import run_migrations
 
 
 @pytest.mark.anyio
 async def test_create_and_read_entities(tmp_path: Path) -> None:
     db_path = tmp_path / "test.db"
-    run_migrations(db_path)
+    await run_migrations(db_path)
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True, module=sqlite3)
     session_factory: async_sessionmaker = async_sessionmaker(engine, expire_on_commit=False)

@@ -134,17 +134,21 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    op.create_foreign_key(
-        "fk_agent_templates_active_version", "agent_templates", "template_versions", ["active_version_id"], ["id"]
-    )
-    op.create_foreign_key(
-        "fk_sessions_template_versions", "sessions", "template_versions", ["template_version_id"], ["id"]
-    )
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        op.create_foreign_key(
+            "fk_agent_templates_active_version", "agent_templates", "template_versions", ["active_version_id"], ["id"]
+        )
+        op.create_foreign_key(
+            "fk_sessions_template_versions", "sessions", "template_versions", ["template_version_id"], ["id"]
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_sessions_template_versions", "sessions", type_="foreignkey")
-    op.drop_constraint("fk_agent_templates_active_version", "agent_templates", type_="foreignkey")
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        op.drop_constraint("fk_sessions_template_versions", "sessions", type_="foreignkey")
+        op.drop_constraint("fk_agent_templates_active_version", "agent_templates", type_="foreignkey")
     op.drop_table("tool_executions")
     op.drop_table("artifacts")
     op.drop_table("sources")

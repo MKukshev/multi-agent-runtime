@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+import os
+
+from fastapi import FastAPI
+
+from platform.gateway.routes import create_gateway_router
+from platform.observability import MetricsReporter
+from platform.persistence import create_engine, create_session_factory
+from platform.retrieval.agent_directory import AgentDirectoryService
+from platform.retrieval.tool_search import ToolSearchService
+from platform.runtime import SessionService, TemplateService
+from platform.security import SecurityPolicy
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./dev.db")
+
+engine = create_engine(DATABASE_URL)
+session_factory = create_session_factory(engine)
+template_service = TemplateService(session_factory)
+session_service = SessionService(session_factory)
+agent_directory = AgentDirectoryService(session_factory)
+tool_search = ToolSearchService(session_factory)
+security_policy = SecurityPolicy()
+metrics = MetricsReporter()
+
+app = FastAPI(title="Multi-Agent Gateway", version="0.1.0")
+app.include_router(
+    create_gateway_router(
+        session_service=session_service,
+        template_service=template_service,
+        agent_directory=agent_directory,
+        tool_search=tool_search,
+        security=security_policy,
+        metrics=metrics,
+    )
+)
+
+
+@app.get("/health")
+async def healthcheck() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.on_event("shutdown")
+async def _shutdown_event() -> None:
+    await engine.dispose()
