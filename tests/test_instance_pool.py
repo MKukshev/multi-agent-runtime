@@ -7,10 +7,10 @@ from typing import Iterable, List
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from platform.core.agents.base_agent import BaseAgent, WaitingForClarification
-from platform.core.streaming.openai_sse import SSEEvent
-from platform.persistence import TemplateRepository
-from platform.runtime import ChatMessage, InstancePool, SessionService
+from maruntime.core.agents.base_agent import BaseAgent, WaitingForClarification
+from maruntime.core.streaming.openai_sse import SSEEvent
+from maruntime.persistence import TemplateRepository
+from maruntime.runtime import ChatMessage, InstancePool, SessionService
 from utils import run_migrations
 
 

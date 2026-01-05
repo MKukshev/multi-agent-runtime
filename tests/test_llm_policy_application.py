@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from platform.core.agents.base_agent import BaseAgent
-from platform.core.llm import LLMClientFactory
-from platform.runtime import (
+from maruntime.core.agents.base_agent import BaseAgent
+from maruntime.core.llm import LLMClientFactory
+from maruntime.runtime import (
     ChatMessage,
     ExecutionPolicy,
     LLMPolicy,
@@ -53,7 +53,7 @@ async def test_llm_client_factory_resolves_policy(monkeypatch):
     monkeypatch.setenv("CUSTOM_KEY", "secret")
     policy = LLMPolicy(model="gpt-4o", base_url="https://example.ai", api_key_ref="CUSTOM_KEY")
 
-    with patch("platform.core.llm.AsyncOpenAI") as client_cls:
+    with patch("maruntime.core.llm.AsyncOpenAI") as client_cls:
         factory = LLMClientFactory()
         client = factory.for_policy(policy)
 

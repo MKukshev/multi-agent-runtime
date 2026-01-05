@@ -4,7 +4,7 @@
 
 ## Конфигурация политики в шаблоне
 ```python
-from platform.runtime import ExecutionPolicy, LLMPolicy, PromptConfig, TemplateService, ToolPolicy
+from maruntime.runtime import ExecutionPolicy, LLMPolicy, PromptConfig, TemplateService, ToolPolicy
 
 llm_policy = LLMPolicy(
     model="gpt-4o-mini",
@@ -31,9 +31,9 @@ version = await TemplateService(session_factory).create_version(
 `BaseAgent` использует `LLMClientFactory` для создания клиента. API-ключ берётся из `api_key_ref` или из `OPENAI_API_KEY`, а `base_url` и остальные поля политики применяются к каждому запросу.
 
 ```python
-from platform.core.agents.base_agent import BaseAgent
-from platform.core.llm import LLMClientFactory
-from platform.runtime import ChatMessage, TemplateRuntimeConfig
+from maruntime.core.agents.base_agent import BaseAgent
+from maruntime.core.llm import LLMClientFactory
+from maruntime.runtime import ChatMessage, TemplateRuntimeConfig
 
 class MyLLMAgent(BaseAgent):
     async def run(self):

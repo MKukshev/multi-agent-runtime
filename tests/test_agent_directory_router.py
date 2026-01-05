@@ -4,10 +4,10 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from platform.core.streaming.openai_sse import SSEEvent
-from platform.persistence import Base, Session
-from platform.retrieval.agent_directory import AgentDirectoryService
-from platform.runtime import (
+from maruntime.core.streaming.openai_sse import SSEEvent
+from maruntime.persistence import Base, Session
+from maruntime.retrieval.agent_directory import AgentDirectoryService
+from maruntime.runtime import (
     ExecutionPolicy,
     LLMPolicy,
     PromptConfig,
@@ -15,7 +15,7 @@ from platform.runtime import (
     TemplateService,
     ToolPolicy,
 )
-from platform.runtime.router import AgentRouter
+from maruntime.runtime.router import AgentRouter
 
 
 async def _session_factory() -> async_sessionmaker:

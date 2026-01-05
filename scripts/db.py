@@ -9,7 +9,7 @@ from typing import Optional
 from alembic import command
 from alembic.config import Config
 
-from platform.persistence import Base, create_engine
+from maruntime.persistence import Base, create_engine
 
 DEFAULT_DB_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./dev.db")
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -24,6 +24,15 @@ def _alembic_config(url: str, config_path: Optional[str] = None) -> Config:
     return cfg
 
 
+def _to_sync_url(url: str) -> str:
+    """Convert async URL to sync URL for Alembic commands."""
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql://")
+    if url.startswith("sqlite+aiosqlite://"):
+        return url.replace("sqlite+aiosqlite://", "sqlite://")
+    return url
+
+
 async def init_database(url: str, *, stamp: bool = True, config_path: Optional[str] = None) -> None:
     engine = create_engine(url)
     async with engine.begin() as conn:
@@ -31,17 +40,21 @@ async def init_database(url: str, *, stamp: bool = True, config_path: Optional[s
     await engine.dispose()
 
     if stamp:
-        cfg = _alembic_config(url, config_path)
+        # Use sync URL for Alembic stamp (runs outside async context)
+        sync_url = _to_sync_url(url)
+        cfg = _alembic_config(sync_url, config_path)
         command.stamp(cfg, "head")
 
 
 def upgrade_database(url: str, revision: str = "head", *, config_path: Optional[str] = None) -> None:
-    cfg = _alembic_config(url, config_path)
+    sync_url = _to_sync_url(url)
+    cfg = _alembic_config(sync_url, config_path)
     command.upgrade(cfg, revision)
 
 
 def downgrade_database(url: str, revision: str = "-1", *, config_path: Optional[str] = None) -> None:
-    cfg = _alembic_config(url, config_path)
+    sync_url = _to_sync_url(url)
+    cfg = _alembic_config(sync_url, config_path)
     command.downgrade(cfg, revision)
 
 

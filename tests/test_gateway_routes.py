@@ -9,15 +9,15 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
-from platform.core.agents.base_agent import BaseAgent, WaitingForClarification
-from platform.observability import MetricsReporter, get_logger
-from platform.persistence import Base
-from platform.persistence.repositories import SessionRepository, ToolRepository
-from platform.retrieval.agent_directory import AgentDirectoryService
-from platform.retrieval.tool_search import ToolSearchService
-from platform.runtime import ExecutionPolicy, LLMPolicy, PromptConfig, SessionService, TemplateService, ToolPolicy
-from platform.gateway.routes import create_gateway_router
-from platform.security import AllowlistPolicy, RiskPolicy, SecurityPolicy
+from maruntime.core.agents.base_agent import BaseAgent, WaitingForClarification
+from maruntime.observability import MetricsReporter, get_logger
+from maruntime.persistence import Base
+from maruntime.persistence.repositories import SessionRepository, ToolRepository
+from maruntime.retrieval.agent_directory import AgentDirectoryService
+from maruntime.retrieval.tool_search import ToolSearchService
+from maruntime.runtime import ExecutionPolicy, LLMPolicy, PromptConfig, SessionService, TemplateService, ToolPolicy
+from maruntime.gateway.routes import create_gateway_router
+from maruntime.security import AllowlistPolicy, RiskPolicy, SecurityPolicy
 
 
 class WaitingAgent(BaseAgent):

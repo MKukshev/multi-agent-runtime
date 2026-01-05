@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from platform.persistence import (
+from maruntime.persistence import (
     AgentInstanceRepository,
     SessionRepository,
     TemplateRepository,

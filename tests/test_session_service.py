@@ -4,8 +4,8 @@ import sqlite3
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from platform.persistence import TemplateRepository
-from platform.runtime import ChatMessage, SessionService
+from maruntime.persistence import TemplateRepository
+from maruntime.runtime import ChatMessage, SessionService
 from utils import run_migrations
 
 

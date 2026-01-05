@@ -1,5 +1,5 @@
-from platform.runtime import ExecutionPolicy, LLMPolicy, PromptConfig, SessionContext, TemplateRuntimeConfig, ToolPolicy
-from platform.security import RulePhase, RulesEngine
+from maruntime.runtime import ExecutionPolicy, LLMPolicy, PromptConfig, SessionContext, TemplateRuntimeConfig, ToolPolicy
+from maruntime.security import RulePhase, RulesEngine
 
 
 def test_rules_engine_limits_tools_after_max_iterations() -> None:

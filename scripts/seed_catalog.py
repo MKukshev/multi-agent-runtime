@@ -12,9 +12,9 @@ from typing import Any, Iterable, Optional
 
 from sqlalchemy import select
 
-from platform.persistence import AgentTemplate, TemplateVersion, Tool, create_engine, create_session_factory
-from platform.persistence.repositories import ToolRepository
-from platform.runtime.templates import ExecutionPolicy, LLMPolicy, PromptConfig, TemplateService, ToolPolicy
+from maruntime.persistence import AgentTemplate, TemplateVersion, Tool, create_engine, create_session_factory
+from maruntime.persistence.repositories import ToolRepository
+from maruntime.runtime.templates import ExecutionPolicy, LLMPolicy, PromptConfig, TemplateService, ToolPolicy
 
 DEFAULT_MODEL = os.getenv("DEFAULT_LLM_MODEL", "gpt-4o-mini")
 DEFAULT_REPO_URL = "https://github.com/sourcegraph/sgr-agent-core.git"
