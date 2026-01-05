@@ -5,23 +5,13 @@ import sqlite3
 from typing import Iterable, List
 
 import pytest
-try:
-    from alembic import command
-    from alembic.config import Config
-except ImportError:  # pragma: no cover - optional dependency guard for CI environments without alembic
-    pytest.skip("alembic is required for persistence tests", allow_module_level=True)
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from platform.core.agents.base_agent import BaseAgent, WaitingForClarification
 from platform.core.streaming.openai_sse import SSEEvent
 from platform.persistence import TemplateRepository
 from platform.runtime import ChatMessage, InstancePool, SessionService
-
-
-def run_migrations(db_path: Path) -> None:
-    cfg = Config("src/platform/persistence/migrations/alembic.ini")
-    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
-    command.upgrade(cfg, "head")
+from utils import run_migrations
 
 
 class CountingAgent(BaseAgent):
@@ -58,7 +48,7 @@ class ClarificationAgent(BaseAgent):
 @pytest.mark.anyio
 async def test_instance_pool_reuses_worker_without_recreation(tmp_path: Path) -> None:
     db_path = tmp_path / "pool.db"
-    run_migrations(db_path)
+    await run_migrations(db_path)
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True, module=sqlite3)
     session_factory: async_sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
@@ -99,7 +89,7 @@ async def test_instance_pool_reuses_worker_without_recreation(tmp_path: Path) ->
 @pytest.mark.anyio
 async def test_instance_pool_validates_template_version_on_claim(tmp_path: Path) -> None:
     db_path = tmp_path / "pool_version.db"
-    run_migrations(db_path)
+    await run_migrations(db_path)
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True, module=sqlite3)
     session_factory: async_sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
@@ -135,7 +125,7 @@ async def test_instance_pool_validates_template_version_on_claim(tmp_path: Path)
 @pytest.mark.anyio
 async def test_waiting_session_can_resume_without_blocking(tmp_path: Path) -> None:
     db_path = tmp_path / "waiting.db"
-    run_migrations(db_path)
+    await run_migrations(db_path)
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True, module=sqlite3)
     session_factory: async_sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
