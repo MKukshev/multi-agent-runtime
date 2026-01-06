@@ -8,7 +8,7 @@ from maruntime.runtime.templates import TemplateRuntimeConfig, TemplateService
 from maruntime.security import RulesEngine
 
 from maruntime.core.agents.base_agent import BaseAgent
-from maruntime.core.services.registry import AgentRegistry
+from maruntime.core.services.registry import AgentRegistry, ToolRegistry
 from maruntime.core.streaming.openai_sse import SSEEvent
 from maruntime.retrieval.agent_directory import AgentDirectoryEntry, AgentDirectoryService
 from maruntime.runtime.session_service import SessionContext, SessionService
@@ -56,10 +56,15 @@ class AgentRouter:
         if entry is None:
             results = await self._agent_directory.search(query=task, top_k=top_k)
             entry = results[0] if results else None
-        agent_cls = self._resolve_agent(entry)
         template_config = await self._template_config(entry)
+        agent_cls = self._resolve_agent(entry, template_config)
+
+        # Load toolkit from template config
+        toolkit = self._resolve_toolkit(template_config)
+
         agent = agent_cls(
             task=task,
+            toolkit=toolkit,
             session_service=self._session_service if entry else None,
             template_version_id=entry.version.id if entry else None,
             template_config=template_config,
@@ -69,13 +74,40 @@ class AgentRouter:
         events = await agent.execute(session_id=session_id)
         return RouteResult(entry=entry, events=events, session_context=agent.session_context)
 
-    def _resolve_agent(self, entry: AgentDirectoryEntry | None) -> Type[BaseAgent]:
-        if entry is None:
-            return self._default_agent()
-        try:
-            return AgentRegistry.get(entry.template.name)
-        except KeyError:
-            return self._default_agent()
+    def _resolve_agent(
+        self, entry: AgentDirectoryEntry | None, template_config: TemplateRuntimeConfig | None
+    ) -> Type[BaseAgent]:
+        # Try to load agent class from template_config.base_class
+        if template_config and template_config.base_class:
+            try:
+                return self._import_agent_class(template_config.base_class)
+            except Exception as e:
+                import logging
+                logging.warning(f"Failed to load agent class '{template_config.base_class}': {e}")
+
+        # Fallback to AgentRegistry by template name
+        if entry is not None:
+            try:
+                return AgentRegistry.get(entry.template.name)
+            except KeyError:
+                pass
+
+        return self._default_agent()
+
+    def _import_agent_class(self, class_path: str) -> Type[BaseAgent]:
+        """Import agent class from module:ClassName path."""
+        if ":" not in class_path:
+            raise ValueError(f"Invalid class path format: {class_path}. Expected 'module:ClassName'")
+
+        module_path, class_name = class_path.rsplit(":", 1)
+        import importlib
+        module = importlib.import_module(module_path)
+        cls = getattr(module, class_name)
+
+        if not issubclass(cls, BaseAgent):
+            raise TypeError(f"{class_path} is not a subclass of BaseAgent")
+
+        return cls
 
     async def _template_config(self, entry: AgentDirectoryEntry | None) -> TemplateRuntimeConfig | None:
         if entry is None or self._template_service is None:
@@ -88,6 +120,25 @@ class AgentRouter:
         from maruntime.core.agents.simple_agent import SimpleAgent  # lazy import to avoid cycles
 
         return SimpleAgent
+
+    def _resolve_toolkit(self, template_config: TemplateRuntimeConfig | None) -> list:
+        """Resolve tool names from template config to tool classes."""
+        if template_config is None or not template_config.tools:
+            return []
+        try:
+            return ToolRegistry.resolve(template_config.tools)
+        except KeyError as e:
+            # Log warning but continue with available tools
+            import logging
+            logging.warning(f"Some tools not found in registry: {e}")
+            # Try to resolve available tools
+            resolved = []
+            for tool_name in template_config.tools:
+                try:
+                    resolved.append(ToolRegistry.get(tool_name))
+                except KeyError:
+                    pass
+            return resolved
 
 
 __all__ = ["AgentRouter", "RouteResult"]

@@ -5,6 +5,9 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# Import tools to register them in ToolRegistry
+import maruntime.core.tools  # noqa: F401
+
 from maruntime.gateway.routes import create_gateway_router
 from maruntime.observability import MetricsReporter
 from maruntime.persistence import create_engine, create_session_factory

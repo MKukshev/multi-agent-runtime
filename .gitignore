@@ -8,6 +8,7 @@ __pycache__/
 build/
 dist/
 *.log
+logs/
 .coverage
 htmlcov/
 .pytest_cache/
