@@ -358,6 +358,40 @@ async def activate_template_version(template_id: str, version_id: str) -> Templa
     return TemplateVersionRead.model_validate(refreshed)
 
 
+class TemplateVersionPromptUpdate(BaseModel):
+    """Update system prompt for a template version."""
+    system_prompt: str
+
+
+@app.patch(
+    "/templates/{template_id}/versions/{version_id}/prompt",
+    response_model=TemplateVersionRead,
+    dependencies=[Depends(require_api_key)],
+)
+async def update_template_version_prompt(
+    template_id: str,
+    version_id: str,
+    payload: TemplateVersionPromptUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> TemplateVersionRead:
+    """Update the system prompt of a template version."""
+    version = await session.get(TemplateVersion, version_id)
+    if version is None or version.template_id != template_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template version not found")
+    
+    # Update settings.prompts.system_prompt
+    settings = dict(version.settings) if version.settings else {}
+    if "prompts" not in settings:
+        settings["prompts"] = {}
+    settings["prompts"]["system_prompt"] = payload.system_prompt
+    
+    version.settings = settings
+    await session.commit()
+    await session.refresh(version)
+    
+    return TemplateVersionRead.model_validate(version)
+
+
 @app.get("/sessions", response_model=list[SessionRead], dependencies=[Depends(require_api_key)])
 async def list_sessions(
     template_version_id: Optional[str] = None,

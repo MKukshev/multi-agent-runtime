@@ -141,9 +141,13 @@ function QuotaEditor({ tools, quotas, onChange }: QuotaEditorProps) {
 function VersionDetails({
   version,
   tools,
+  templateId,
+  onPromptEdit,
 }: {
   version: TemplateVersion;
   tools: Tool[];
+  templateId: string;
+  onPromptEdit: () => void;
 }) {
   const settings = version.settings;
   const quotas = settings?.tool_policy?.quotas || {};
@@ -266,18 +270,30 @@ function VersionDetails({
       )}
 
       {/* System Prompt */}
-      {settings?.prompts?.system && (
-        <div>
-          <h4 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-3">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider">
             System Prompt
           </h4>
+          <Button variant="secondary" size="sm" onClick={onPromptEdit}>
+            ✏️ Edit Prompt
+          </Button>
+        </div>
+        {(settings?.prompts?.system || settings?.prompts?.system_prompt) ? (
           <div className="bg-[var(--background)] rounded-lg p-4 max-h-48 overflow-y-auto">
             <pre className="text-sm whitespace-pre-wrap font-mono text-xs">
-              {settings.prompts.system}
+              {settings.prompts.system || settings.prompts.system_prompt}
             </pre>
+            <div className="mt-2 text-xs text-[var(--muted)]">
+              {(settings.prompts.system || settings.prompts.system_prompt || '').length.toLocaleString()} characters
+            </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="bg-[var(--background)] rounded-lg p-4 text-[var(--muted)] italic">
+            No custom prompt. Using default system prompt.
+          </div>
+        )}
+      </div>
 
       {/* MCP Configuration */}
       <MCPSection mcp={settings?.mcp} />
@@ -365,6 +381,92 @@ function MCPSection({ mcp }: { mcp?: MCPConfig }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Prompt Editor Modal
+function PromptEditorModal({
+  isOpen,
+  onClose,
+  templateId,
+  versionId,
+  currentPrompt,
+  onSave,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  templateId: string;
+  versionId: string;
+  currentPrompt: string;
+  onSave: () => void;
+}) {
+  const [prompt, setPrompt] = useState(currentPrompt);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPrompt(currentPrompt);
+  }, [currentPrompt]);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await adminApi.updateTemplatePrompt(templateId, versionId, prompt);
+      onSave();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save prompt');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-[var(--surface)] rounded-xl border border-[var(--border)] w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="p-6 border-b border-[var(--border)] flex justify-between items-center">
+          <h2 className="text-xl font-bold">Edit System Prompt</h2>
+          <button onClick={onClose} className="text-[var(--muted)] hover:text-[var(--foreground)] text-2xl">×</button>
+        </div>
+
+        <div className="p-6 flex-1 overflow-hidden flex flex-col">
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+          
+          <div className="text-sm text-[var(--muted)] mb-2">
+            <span className="font-semibold">Placeholders:</span>{' '}
+            <code className="bg-[var(--background)] px-1 rounded">{'{available_tools}'}</code>,{' '}
+            <code className="bg-[var(--background)] px-1 rounded">{'{current_date}'}</code>
+          </div>
+          
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="flex-1 min-h-[400px] w-full px-4 py-3 rounded-lg bg-[var(--background)] border border-[var(--border)] focus:border-[var(--primary)] outline-none font-mono text-sm resize-none"
+            placeholder="Enter system prompt..."
+          />
+          
+          <div className="mt-2 text-xs text-[var(--muted)]">
+            {prompt.length.toLocaleString()} characters
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-[var(--border)] flex justify-end gap-3">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Prompt'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -471,23 +573,31 @@ export default function TemplatesPage() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [promptEditorOpen, setPromptEditorOpen] = useState(false);
+
+  async function loadData() {
+    try {
+      const [templatesData, toolsData] = await Promise.all([
+        adminApi.getTemplates(),
+        adminApi.getTools(true),
+      ]);
+      setTemplates(templatesData);
+      setTools(toolsData);
+      
+      // Refresh selected template if it exists
+      if (selectedTemplate) {
+        const updated = templatesData.find(t => t.id === selectedTemplate.id);
+        if (updated) setSelectedTemplate(updated);
+      }
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [templatesData, toolsData] = await Promise.all([
-          adminApi.getTemplates(),
-          adminApi.getTools(true),
-        ]);
-        setTemplates(templatesData);
-        setTools(toolsData);
-      } catch (error) {
-        console.error('Failed to load data:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    loadData();
   }, []);
 
   if (loading) {
@@ -562,7 +672,12 @@ export default function TemplatesPage() {
                 </Button>
               </div>
 
-              <VersionDetails version={activeVersion} tools={tools} />
+              <VersionDetails 
+                version={activeVersion} 
+                tools={tools} 
+                templateId={selectedTemplate.id}
+                onPromptEdit={() => setPromptEditorOpen(true)}
+              />
             </Card>
           ) : selectedTemplate ? (
             <Card className="flex flex-col items-center justify-center h-full min-h-[400px]">
@@ -576,6 +691,18 @@ export default function TemplatesPage() {
           )}
         </div>
       </div>
+
+      {/* Prompt Editor Modal */}
+      {selectedTemplate && activeVersion && (
+        <PromptEditorModal
+          isOpen={promptEditorOpen}
+          onClose={() => setPromptEditorOpen(false)}
+          templateId={selectedTemplate.id}
+          versionId={activeVersion.id}
+          currentPrompt={activeVersion.settings?.prompts?.system || activeVersion.settings?.prompts?.system_prompt || ''}
+          onSave={loadData}
+        />
+      )}
     </div>
   );
 }

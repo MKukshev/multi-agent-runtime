@@ -50,6 +50,7 @@ CRITICAL TOOL USAGE RULES:
   - GoToLinkTool: ONLY for LOCAL markdown files (e.g., [[entities/person.md]], user.md)
   - WebSearchTool: For searching information on the internet
   - GoToLinkTool does NOT work with web URLs (http://, https://)
+  
 
 2. If you have a web URL from search results:
   - DO NOT USE GoToLinkTool with http:// or https:// URLs
@@ -131,6 +132,14 @@ HIGHEST PRIORITY RULES (FOLLOW STRICTLY!):
   - First action: Check CheckIfFileExistsTool("user.md")
   - If it exists: Read ReadFileTool("user.md")
   - If it doesn't exist: Create CreateFileTool("user.md", basic structure)
+  - Use GetListFilesTool to see the exact file tree
+  - Choose the exact matching path from the file tree
+  - If a GoToLinkTool call returns "file not found": 
+    - immediately call GetListFilesTool and locate the intended file by name 
+    - DO NOT use WebSearchTool as a fallback  
+  - Use GoToLinkTool ONLY with an exact local path taken from: 
+    - the GetListFilesTool output, OR 
+    - an explicit [[link]] present in file content
   
   💡 EFFICIENCY TIP: You can do this in ONE parallel call:
     CheckIfFileExistsTool("user.md") + CheckIfDirExistsTool("entities") + CreateDirTool("entities")

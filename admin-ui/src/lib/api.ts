@@ -90,6 +90,7 @@ export interface TemplateVersion {
     };
     prompts: {
       system: string | null;
+      system_prompt: string | null;  // DB field name
       initial_user: string | null;
       clarification: string | null;
     };
@@ -306,6 +307,15 @@ export const adminApi = {
     await fetch(`${ADMIN_API_URL}/templates/${templateId}/versions/${versionId}/activate`, {
       method: 'POST',
     });
+  },
+
+  async updateTemplatePrompt(templateId: string, versionId: string, systemPrompt: string): Promise<TemplateVersion> {
+    const res = await fetch(`${ADMIN_API_URL}/templates/${templateId}/versions/${versionId}/prompt`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system_prompt: systemPrompt }),
+    });
+    return res.json();
   },
 
   // Sessions
