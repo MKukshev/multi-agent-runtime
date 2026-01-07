@@ -20,10 +20,17 @@ export interface Tool {
     execution?: ToolExecutionConfig;
     [key: string]: unknown;
   };
+  category: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
+
+export const TOOL_CATEGORIES = [
+  { value: 'research', label: 'Research', icon: '🔍', color: 'blue' },
+  { value: 'memory', label: 'Memory', icon: '💾', color: 'purple' },
+  { value: 'utility', label: 'Utility', icon: '🔧', color: 'slate' },
+] as const;
 
 export interface ToolQuota {
   max_calls: number | null;

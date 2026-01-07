@@ -53,6 +53,7 @@ class ToolCreate(BaseModel):
     description: Optional[str] = None
     python_entrypoint: Optional[str] = None
     config: dict[str, Any] = Field(default_factory=dict)
+    category: str = "utility"
     is_active: bool = True
 
 
@@ -61,6 +62,7 @@ class ToolUpdate(BaseModel):
     description: Optional[str] = None
     python_entrypoint: Optional[str] = None
     config: Optional[dict[str, Any]] = None
+    category: Optional[str] = None
     is_active: Optional[bool] = None
 
 
@@ -70,6 +72,7 @@ class ToolRead(BaseModel):
     description: Optional[str] = None
     python_entrypoint: Optional[str] = None
     config: dict[str, Any] = Field(default_factory=dict)
+    category: str = "utility"
     is_active: bool
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

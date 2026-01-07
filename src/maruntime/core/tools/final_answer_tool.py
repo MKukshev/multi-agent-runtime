@@ -26,7 +26,7 @@ class FinalAnswerTool(PydanticTool):
     completed_steps: list[str] = Field(
         description="Summary of completed steps including verification",
         min_length=1,
-        max_length=5,
+        max_length=15,
     )
     answer: str = Field(
         description="Comprehensive final answer with EXACT factual details (dates, numbers, names)"

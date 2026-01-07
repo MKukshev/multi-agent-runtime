@@ -30,6 +30,7 @@ class Tool(Base):
     python_entrypoint: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     embedding: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    category: Mapped[str] = mapped_column(String(50), default="utility")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

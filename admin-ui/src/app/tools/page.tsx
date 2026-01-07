@@ -4,14 +4,44 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
-import { adminApi, Tool } from '@/lib/api';
+import { adminApi, Tool, TOOL_CATEGORIES } from '@/lib/api';
 
 interface ToolFormData {
   name: string;
   description: string;
   python_entrypoint: string;
   config: Record<string, unknown>;
+  category: string;
   is_active: boolean;
+}
+
+// Group tools by category
+function groupToolsByCategory(tools: Tool[]): Record<string, Tool[]> {
+  const grouped: Record<string, Tool[]> = {};
+  for (const cat of TOOL_CATEGORIES) {
+    grouped[cat.value] = [];
+  }
+  grouped['other'] = [];
+  
+  for (const tool of tools) {
+    const category = tool.category || 'utility';
+    if (grouped[category]) {
+      grouped[category].push(tool);
+    } else {
+      grouped['other'].push(tool);
+    }
+  }
+  
+  // Remove empty categories
+  for (const key of Object.keys(grouped)) {
+    if (grouped[key].length === 0) delete grouped[key];
+  }
+  
+  return grouped;
+}
+
+function getCategoryInfo(category: string) {
+  return TOOL_CATEGORIES.find(c => c.value === category) || { value: category, label: category, icon: '📦', color: 'slate' };
 }
 
 function ConfigEditor({
@@ -166,6 +196,7 @@ function ToolModal({
     description: tool?.description || '',
     python_entrypoint: tool?.python_entrypoint || '',
     config: tool?.config || {},
+    category: tool?.category || 'utility',
     is_active: tool?.is_active ?? true,
   });
   const [saving, setSaving] = useState(false);
@@ -257,6 +288,21 @@ function ToolModal({
             </p>
           </div>
 
+          <div>
+            <label className="block text-sm text-[var(--muted)] mb-1">Category</label>
+            <select
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] focus:border-[var(--primary)] outline-none"
+            >
+              {TOOL_CATEGORIES.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.icon} {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <ConfigEditor
             config={formData.config}
             onChange={(config) => setFormData({ ...formData, config })}
@@ -293,6 +339,28 @@ export default function ToolsPage() {
   const [loading, setLoading] = useState(true);
   const [modalTool, setModalTool] = useState<Tool | null | 'new'>(null);
   const [expandedConfig, setExpandedConfig] = useState<string | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+
+  function toggleCategory(category: string) {
+    setCollapsedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  }
+
+  function expandAll() {
+    setCollapsedCategories(new Set());
+  }
+
+  function collapseAll() {
+    const grouped = groupToolsByCategory(tools);
+    setCollapsedCategories(new Set(Object.keys(grouped)));
+  }
 
   async function loadTools() {
     try {
@@ -333,68 +401,105 @@ export default function ToolsPage() {
           <h1 className="text-3xl font-bold">Tools</h1>
           <p className="text-[var(--muted)] mt-1">Manage available tools for agents</p>
         </div>
-        <Button onClick={() => setModalTool('new')}>+ Add Tool</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" size="sm" onClick={expandAll}>Expand All</Button>
+          <Button variant="secondary" size="sm" onClick={collapseAll}>Collapse All</Button>
+          <Button onClick={() => setModalTool('new')}>+ Add Tool</Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {tools.map((tool) => (
-          <Card key={tool.id} className="flex flex-col">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-lg truncate">{tool.name}</h3>
-                {tool.python_entrypoint && (
-                  <p className="text-xs font-mono text-[var(--accent)] truncate mt-0.5">
-                    {tool.python_entrypoint}
-                  </p>
-                )}
-              </div>
-              <Badge variant={tool.is_active ? 'success' : 'muted'} className="ml-2 shrink-0">
-                {tool.is_active ? 'Active' : 'Inactive'}
-              </Badge>
-            </div>
-
-            <p className="text-[var(--muted)] text-sm mb-4 line-clamp-2">
-              {tool.description || 'No description'}
-            </p>
-
-            {/* Config Section */}
-            <div className="mb-4 p-3 rounded-lg bg-[var(--background)] border border-[var(--border)]">
-              <div
-                className="flex items-center justify-between cursor-pointer"
-                onClick={() => setExpandedConfig(expandedConfig === tool.id ? null : tool.id)}
-              >
-                <span className="text-xs font-medium text-[var(--muted)] uppercase tracking-wide">
-                  Configuration
-                </span>
-                <span className="text-[var(--muted)] text-xs">
-                  {Object.keys(tool.config).length} params
-                  <span className="ml-1">{expandedConfig === tool.id ? '▼' : '▶'}</span>
-                </span>
-              </div>
-
-              {expandedConfig === tool.id && (
-                <div className="mt-3 pt-3 border-t border-[var(--border)]">
-                  <ConfigDisplay config={tool.config} />
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2 mt-auto">
-              <Button variant="secondary" size="sm" onClick={() => setModalTool(tool)}>
-                Edit
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => toggleActive(tool)}>
-                {tool.is_active ? 'Disable' : 'Enable'}
-              </Button>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      {tools.length === 0 && (
+      {tools.length === 0 ? (
         <Card className="text-center py-12">
           <p className="text-[var(--muted)]">No tools found. Create your first tool!</p>
         </Card>
+      ) : (
+        <div className="space-y-4">
+          {Object.entries(groupToolsByCategory(tools)).map(([category, categoryTools]) => {
+            const catInfo = getCategoryInfo(category);
+            const isCollapsed = collapsedCategories.has(category);
+            const activeCount = categoryTools.filter(t => t.is_active).length;
+            
+            return (
+              <div key={category} className="border border-[var(--border)] rounded-xl overflow-hidden bg-[var(--surface)]">
+                {/* Category Header - Collapsible */}
+                <button
+                  onClick={() => toggleCategory(category)}
+                  className="w-full flex items-center justify-between p-4 hover:bg-[var(--background)] transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{catInfo.icon}</span>
+                    <h2 className="text-xl font-semibold">{catInfo.label}</h2>
+                    <Badge variant="muted">{categoryTools.length} tools</Badge>
+                    <Badge variant="success">{activeCount} active</Badge>
+                  </div>
+                  <span className="text-[var(--muted)] text-xl transition-transform duration-200" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
+                    ▼
+                  </span>
+                </button>
+                
+                {/* Category Content */}
+                {!isCollapsed && (
+                  <div className="p-4 pt-0 border-t border-[var(--border)]">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 pt-4">
+                      {categoryTools.map((tool) => (
+                        <Card key={tool.id} className="flex flex-col">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-lg truncate">{tool.name}</h3>
+                              {tool.python_entrypoint && (
+                                <p className="text-xs font-mono text-[var(--accent)] truncate mt-0.5">
+                                  {tool.python_entrypoint}
+                                </p>
+                              )}
+                            </div>
+                            <Badge variant={tool.is_active ? 'success' : 'muted'} className="ml-2 shrink-0">
+                              {tool.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </div>
+
+                          <p className="text-[var(--muted)] text-sm mb-4 line-clamp-2">
+                            {tool.description || 'No description'}
+                          </p>
+
+                          {/* Config Section */}
+                          <div className="mb-4 p-3 rounded-lg bg-[var(--background)] border border-[var(--border)]">
+                            <div
+                              className="flex items-center justify-between cursor-pointer"
+                              onClick={() => setExpandedConfig(expandedConfig === tool.id ? null : tool.id)}
+                            >
+                              <span className="text-xs font-medium text-[var(--muted)] uppercase tracking-wide">
+                                Configuration
+                              </span>
+                              <span className="text-[var(--muted)] text-xs">
+                                {Object.keys(tool.config).length} params
+                                <span className="ml-1">{expandedConfig === tool.id ? '▼' : '▶'}</span>
+                              </span>
+                            </div>
+
+                            {expandedConfig === tool.id && (
+                              <div className="mt-3 pt-3 border-t border-[var(--border)]">
+                                <ConfigDisplay config={tool.config} />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2 mt-auto">
+                            <Button variant="secondary" size="sm" onClick={() => setModalTool(tool)}>
+                              Edit
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={() => toggleActive(tool)}>
+                              {tool.is_active ? 'Disable' : 'Enable'}
+                            </Button>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* Modal for create/edit */}

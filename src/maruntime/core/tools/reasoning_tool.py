@@ -23,8 +23,8 @@ class ReasoningTool(PydanticTool):
     # Reasoning chain - step-by-step thinking process (helps stabilize model)
     reasoning_steps: list[str] = Field(
         description="Step-by-step reasoning (brief, 1 sentence each)",
-        min_length=2,
-        max_length=3,
+        min_length=1,
+        max_length=10,
     )
 
     # Reasoning and state assessment
@@ -44,8 +44,8 @@ class ReasoningTool(PydanticTool):
     # Next step planning
     remaining_steps: list[str] = Field(
         default_factory=list,
-        description="0-3 remaining steps (empty if task_completed=True)",
-        max_length=3,
+        description="Remaining steps (empty if task_completed=True)",
+        max_length=10,
     )
     task_completed: bool = Field(description="Is the research task finished?")
 

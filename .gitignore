@@ -9,6 +9,7 @@ build/
 dist/
 *.log
 logs/
+memory_dir/
 .coverage
 htmlcov/
 .pytest_cache/

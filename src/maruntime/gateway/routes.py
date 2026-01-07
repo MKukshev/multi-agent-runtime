@@ -99,6 +99,17 @@ def create_gateway_router(
             return None
         return AgentDirectoryEntry(template=version.template, version=version, score=1.0)
 
+    async def _entry_for_model(model_name: str) -> AgentDirectoryEntry | None:
+        """Get entry by exact template name match."""
+        # Get all active models and find exact match
+        configs = await template_service.list_active_models()
+        for config in configs:
+            if config.template_name == model_name:
+                version = await template_service.get_version_with_template(config.version_id)
+                if version and version.template:
+                    return AgentDirectoryEntry(template=version.template, version=version, score=1.0)
+        return None
+
     @router.post("/v1/chat/completions")
     async def chat_completions(request: ChatCompletionRequest) -> Response:
         metrics.record_request("chat.completions", model=request.model)
@@ -115,6 +126,10 @@ def create_gateway_router(
                 entry = await _entry_for_version(session_context.template_version_id)
             except ValueError:
                 session_id = None
+
+        # If no entry from session resume, try to get entry by exact model name match (for new sessions)
+        if entry is None:
+            entry = await _entry_for_model(request.model)
 
         effective_model = entry.template.name if entry else request.model
         try:

@@ -301,7 +301,20 @@ class TemplateService:
 
         # Parse policy sections
         llm_policy = LLMPolicy(**settings.get("llm_policy", {}))
-        prompts = PromptConfig(**settings.get("prompts", {}))
+        
+        # Parse prompts with field name mapping (DB uses system_prompt, code uses system)
+        prompts_data = settings.get("prompts", {})
+        if isinstance(prompts_data, dict):
+            # Map DB field names to PromptConfig field names
+            prompts_data = {
+                "system": prompts_data.get("system") or prompts_data.get("system_prompt"),
+                "initial_user": prompts_data.get("initial_user") or prompts_data.get("initial_user_request"),
+                "clarification": prompts_data.get("clarification") or prompts_data.get("clarification_response"),
+            }
+            # Remove None values
+            prompts_data = {k: v for k, v in prompts_data.items() if v is not None}
+        prompts = PromptConfig(**prompts_data)
+        
         execution_policy = ExecutionPolicy(**settings.get("execution_policy", {}))
 
         # Parse tool_policy with quotas

@@ -123,14 +123,18 @@ class ToolCallingAgent(BaseAgent):
 
     def _log_tool_execution(self, tool_name: str, tool_args: dict, result: str) -> None:
         """Log detailed tool execution info like sgr-agent-core."""
-        self._get_logger().info(
-            f"\n###############################################\n"
-            f"🛠️ TOOL EXECUTION DEBUG:\n"
-            f"    🔧 Tool Name: {tool_name}\n"
-            f"    📋 Tool Args: {json.dumps(tool_args, indent=2, ensure_ascii=False)[:500]}\n"
-            f"    🔍 Result: '{result[:400]}...'\n"
-            f"###############################################"
-        )
+        # Special handling for ReasoningTool - log structured reasoning data
+        if tool_name.lower() == "reasoningtool":
+            self._log_reasoning_result(tool_args)
+        else:
+            self._get_logger().info(
+                f"\n###############################################\n"
+                f"🛠️ TOOL EXECUTION DEBUG:\n"
+                f"    🔧 Tool Name: {tool_name}\n"
+                f"    📋 Tool Args: {json.dumps(tool_args, indent=2, ensure_ascii=False)[:500]}\n"
+                f"    🔍 Result: '{result[:400]}...'\n"
+                f"###############################################"
+            )
         self._log.append({
             "step_number": self._iteration,
             "timestamp": datetime.now().isoformat(),
@@ -139,6 +143,31 @@ class ToolCallingAgent(BaseAgent):
             "tool_args": tool_args,
             "result": result[:1000],
         })
+
+    def _log_reasoning_result(self, tool_args: dict) -> None:
+        """Log ReasoningTool result in detailed format like sgr-agent-core."""
+        reasoning_steps = tool_args.get("reasoning_steps", [])
+        current_situation = tool_args.get("current_situation", "")
+        plan_status = tool_args.get("plan_status", "")
+        enough_data = tool_args.get("enough_data", False)
+        remaining_steps = tool_args.get("remaining_steps", [])
+        task_completed = tool_args.get("task_completed", False)
+        next_step = remaining_steps[0] if remaining_steps else "N/A"
+        
+        self._get_logger().info(
+            f"\n###############################################\n"
+            f"🤖 LLM RESPONSE DEBUG:\n"
+            f"   🧠 Reasoning Steps: {reasoning_steps}\n"
+            f"   📊 Current Situation: '{current_situation[:400]}...'\n"
+            f"   📋 Plan Status: '{plan_status[:200]}...'\n"
+            f"   🔍 Searches Done: {self._agent_context.searches_used}\n"
+            f"   🔍 Clarifications Done: {self._agent_context.clarifications_used}\n"
+            f"   ✅ Enough Data: {enough_data}\n"
+            f"   📝 Remaining Steps: {remaining_steps}\n"
+            f"   🏁 Task Completed: {task_completed}\n"
+            f"   ➡️ Next Step: {next_step}\n"
+            f"###############################################"
+        )
 
     def _log_llm_text_response(self, content: str) -> None:
         """Log when LLM responds with text instead of tool call."""
@@ -202,10 +231,8 @@ class ToolCallingAgent(BaseAgent):
 
         # Initialize session-specific logger
         session_id = self.session_context.session_id if self.session_context else "ephemeral"
-        agent_name = getattr(self.template_config, "base_class", None) or self.name
-        # Extract class name from full path like "maruntime.core.agents.tool_calling_agent:ToolCallingAgent"
-        if agent_name and ":" in agent_name:
-            agent_name = agent_name.split(":")[-1]
+        # Use template name (e.g., "memory-agent", "sgr-research-agent") instead of class name
+        agent_name = getattr(self.template_config, "template_name", None) or self.name
         self._session_logger = setup_session_logger(agent_name or "agent", session_id)
         
         self._log_agent_start()
