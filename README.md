@@ -187,15 +187,63 @@ scripts/db/
    python -m scripts.run_admin
    ```
 
-### Container-based
-После появления `Dockerfile` соберите образ и задайте переменные окружения (`DATABASE_URL`, `SECRET_KEY`, `LOG_LEVEL`). Пример:
+### Docker Compose (рекомендуемый способ)
+
+**Требования:** Docker 20+, Docker Compose v2
+
+**1. Настройка переменных окружения:**
 ```bash
-docker build -t multi-agent-runtime .
-docker run -p 8000:8000 -e DATABASE_URL=... multi-agent-runtime
+# Создайте .env файл
+cat > .env << EOF
+DB_PASSWORD=your_secure_password
+OPENAI_API_KEY=sk-your-openai-key
+EOF
 ```
 
+**2. Запуск всех сервисов:**
+```bash
+# Сборка и запуск
+docker-compose up -d --build
+
+# Применение миграций БД
+docker-compose --profile migrate up migrate
+
+# Загрузка начальных данных (опционально)
+docker-compose --profile seed up seed
+```
+
+**3. Сервисы:**
+| Сервис | URL | Описание |
+|--------|-----|----------|
+| Admin UI | http://localhost:3000 | Веб-интерфейс |
+| Gateway API | http://localhost:8000 | OpenAI-совместимый API |
+| Admin API | http://localhost:8001 | CRUD для шаблонов/инструментов |
+| PostgreSQL | localhost:5432 | База данных |
+
+**4. С nginx (всё через порт 80):**
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
+```
+
+**5. Полезные команды:**
+```bash
+# Логи
+docker-compose logs -f gateway
+
+# Остановка
+docker-compose down
+
+# Полная очистка (включая volumes)
+docker-compose down -v
+```
+
+**6. Volumes:**
+- `maruntime-postgres-data` — данные PostgreSQL
+- `maruntime-memory-data` — файлы памяти агентов
+- `maruntime-logs-data` — логи агентов
+
 ### Kubernetes
-Рекомендуется разделить deployment'ы на gateway, runtime pool и admin API, используя общий ConfigMap для переменных окружения и отдельные Secret для ключей.
+Рекомендуется разделить deployment'ы на gateway, admin-api и admin-ui, используя общий ConfigMap для переменных окружения и отдельные Secret для ключей. Helm chart будет добавлен в будущих версиях.
 
 ## Полезные ссылки
 - Архитектура и компоненты: `docs/02-target-architecture-variant-b-v2.md`

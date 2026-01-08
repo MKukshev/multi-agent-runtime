@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: maruntime-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: maruntime
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-maruntime_secret}
+      POSTGRES_DB: maruntime
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maruntime -d maruntime"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - maruntime-network
+
+  # ============================================
+  # Gateway API (Port 8000)
+  # ============================================
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+    container_name: maruntime-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://maruntime:${DB_PASSWORD:-maruntime_secret}@postgres:5432/maruntime
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      PYTHONPATH: /app/src
+    volumes:
+      - memory_data:/app/memory_dir
+      - logs_data:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - maruntime-network
+
+  # ============================================
+  # Admin API (Port 8001)
+  # ============================================
+  admin-api:
+    build:
+      context: .
+      dockerfile: docker/admin-api.Dockerfile
+    container_name: maruntime-admin-api
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://maruntime:${DB_PASSWORD:-maruntime_secret}@postgres:5432/maruntime
+      PYTHONPATH: /app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - maruntime-network
+
+  # ============================================
+  # Admin UI (Port 3000)
+  # ============================================
+  admin-ui:
+    build:
+      context: .
+      dockerfile: docker/admin-ui.Dockerfile
+      args:
+        NEXT_PUBLIC_GATEWAY_API_URL: ${NEXT_PUBLIC_GATEWAY_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_ADMIN_API_URL: ${NEXT_PUBLIC_ADMIN_API_URL:-http://localhost:8001}
+    container_name: maruntime-admin-ui
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway
+      - admin-api
+    networks:
+      - maruntime-network
+
+  # ============================================
+  # Database Migrations (run once)
+  # ============================================
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+    container_name: maruntime-migrate
+    environment:
+      DATABASE_URL: postgresql+asyncpg://maruntime:${DB_PASSWORD:-maruntime_secret}@postgres:5432/maruntime
+      PYTHONPATH: /app/src
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - maruntime-network
+    profiles:
+      - migrate
+
+  # ============================================
+  # Seed Data (run once)
+  # ============================================
+  seed:
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+    container_name: maruntime-seed
+    environment:
+      DATABASE_URL: postgresql+asyncpg://maruntime:${DB_PASSWORD:-maruntime_secret}@postgres:5432/maruntime
+      PYTHONPATH: /app/src
+    command: ["python", "-m", "scripts.seed_catalog"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - maruntime-network
+    profiles:
+      - seed
+
+volumes:
+  postgres_data:
+    name: maruntime-postgres-data
+  memory_data:
+    name: maruntime-memory-data
+  logs_data:
+    name: maruntime-logs-data
+
+networks:
+  maruntime-network:
+    name: maruntime-network
+    driver: bridge

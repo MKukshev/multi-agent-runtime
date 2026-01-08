@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Node
+node_modules/
+.next/
+out/
+.npm
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.cursor/
+
+# Git
+.git/
+.gitignore
+
+# Logs & temp
+logs/
+*.log
+tmp/
+temp/
+
+# Local data
+dev.db
+memory_dir/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.docker/
+
+# Docs (not needed in image)
+docs/
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Env files (will be passed via docker-compose)
+.env
+.env.*
+!.env.example
