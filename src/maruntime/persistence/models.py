@@ -92,6 +92,41 @@ class TemplateVersion(Base):
     )
 
 
+class User(Base):
+    """User account for authentication and personalization."""
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    login: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    about: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    auth_sessions: Mapped[List["AuthSession"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    chat_sessions: Mapped[List["Session"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class AuthSession(Base):
+    """Authentication session for cookie-based auth."""
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    user: Mapped[User] = relationship("User", back_populates="auth_sessions")
+
+
 class Session(Base):
     __tablename__ = "sessions"
 
@@ -104,6 +139,12 @@ class Session(Base):
         String(36), ForeignKey("agent_instances.id", use_alter=True, name="fk_session_instance"),
         nullable=True
     )
+    # Link to the user who owns this chat session
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), default="New Chat")
     state: Mapped[str] = mapped_column(String(50), default="ACTIVE")
     context: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -117,6 +158,7 @@ class Session(Base):
         back_populates="sessions",
         foreign_keys=[instance_id]
     )
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="chat_sessions")
     messages: Mapped[List["SessionMessage"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
@@ -139,6 +181,10 @@ class SessionMessage(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[dict] = mapped_column(JSON, default=dict)
     tool_call_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # New fields for agent steps
+    message_type: Mapped[str] = mapped_column(String(50), nullable=False, default="message")
+    step_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    step_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     session: Mapped[Session] = relationship("Session", back_populates="messages")
@@ -292,6 +338,7 @@ __all__ = [
     "AgentInstance",
     "AgentTemplate",
     "Artifact",
+    "AuthSession",
     "Base",
     "Session",
     "SessionMessage",
@@ -300,4 +347,5 @@ __all__ = [
     "TemplateVersion",
     "Tool",
     "ToolExecution",
+    "User",
 ]

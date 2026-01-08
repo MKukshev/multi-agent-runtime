@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 # Import tools to register them in ToolRegistry
 import maruntime.core.tools  # noqa: F401
 
+from maruntime.auth.middleware import AuthMiddleware
+from maruntime.auth.routes import create_auth_router
 from maruntime.gateway.routes import create_gateway_router
 from maruntime.observability import MetricsReporter
 from maruntime.persistence import create_engine, create_session_factory
@@ -37,6 +39,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Auth middleware - validates session cookies and adds user to request.state
+app.add_middleware(
+    AuthMiddleware,
+    session_factory=session_factory,
+)
+
+# Auth routes (register, login, logout, etc.)
+app.include_router(create_auth_router(session_factory))
+
+# Gateway routes (chat completions, models)
 app.include_router(
     create_gateway_router(
         session_service=session_service,

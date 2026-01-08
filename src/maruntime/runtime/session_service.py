@@ -102,11 +102,21 @@ class SessionService:
         self._session_factory = session_factory
 
     async def start_session(
-        self, template_version_id: str, *, context: dict[str, Any] | None = None
+        self,
+        template_version_id: str,
+        *,
+        context: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        title: str | None = None,
     ) -> tuple[SessionContext, MessageStore]:
         async with self._session_factory() as session:
             repo = SessionRepository(session)
-            session_obj = await repo.create_session(template_version_id=template_version_id, context=context)
+            session_obj = await repo.create_session(
+                template_version_id=template_version_id,
+                context=context,
+                user_id=user_id,
+                title=title,
+            )
             await session.commit()
             return SessionContext.from_model(session_obj), MessageStore(session_id=session_obj.id)
 
@@ -131,6 +141,27 @@ class SessionService:
             )
             await session.commit()
             return message
+
+    async def save_agent_step(
+        self,
+        session_id: str,
+        message_type: str,
+        step_number: int,
+        step_data: dict[str, Any],
+        role: str = "system",
+    ) -> None:
+        """Save an agent step event (step_start, tool_call, tool_result, step_end, etc.)."""
+        async with self._session_factory() as session:
+            repo = SessionRepository(session)
+            await repo.add_message(
+                session_id=session_id,
+                role=role,
+                content={},
+                message_type=message_type,
+                step_number=step_number,
+                step_data=step_data,
+            )
+            await session.commit()
 
     async def update_context(self, session_id: str, context: dict[str, Any]) -> SessionContext:
         async with self._session_factory() as session:

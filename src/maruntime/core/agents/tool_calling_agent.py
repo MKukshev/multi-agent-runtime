@@ -244,10 +244,11 @@ class ToolCallingAgent(BaseAgent):
             await self._record_message(ChatMessage.text("system", system_prompt))
             self._get_logger().debug(f"📜 System prompt loaded ({len(system_prompt)} chars)")
 
-        user_prompt = self._initial_user_request()
+        user_prompt = self._initial_user_request()  # Formatted for LLM
         self._conversation.append({"role": "user", "content": user_prompt})
-        await self._record_message(ChatMessage.text("user", user_prompt))
-        self._get_logger().info(f"📥 User request: '{user_prompt[:200]}...'")
+        # Save original task to DB (without formatting), not the templated version
+        await self._record_message(ChatMessage.text("user", self.task))
+        self._get_logger().info(f"📥 User request: '{self.task[:200]}...'")
 
         # Prepare tools for OpenAI
         tools_schema = self._build_tools_schema()
@@ -368,10 +369,8 @@ class ToolCallingAgent(BaseAgent):
                         )
                     self._finished = True
 
-                # Emit step_end event immediately
-                yield self.streaming_generator.step_end(
-                    self._iteration, "completed" if not self._finished or final_result else "running"
-                )
+                # Emit step_end event - step is always completed when we reach here
+                yield self.streaming_generator.step_end(self._iteration, "completed")
                 
                 self._log_iteration_summary()
 

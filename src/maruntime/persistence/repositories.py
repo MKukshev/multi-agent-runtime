@@ -184,10 +184,18 @@ class SessionRepository:
         self,
         template_version_id: str,
         *,
+        user_id: Optional[str] = None,
+        title: Optional[str] = None,
         state: str = "ACTIVE",
         context: Optional[dict] = None,
     ) -> Session:
-        session_obj = Session(template_version_id=template_version_id, state=state, context=context or {})
+        session_obj = Session(
+            template_version_id=template_version_id,
+            user_id=user_id,
+            title=title or "New Chat",
+            state=state,
+            context=context or {},
+        )
         self.session.add(session_obj)
         await self.session.flush()
         return session_obj
@@ -220,8 +228,19 @@ class SessionRepository:
         content: dict,
         *,
         tool_call_id: Optional[str] = None,
+        message_type: str = "message",
+        step_number: Optional[int] = None,
+        step_data: Optional[dict] = None,
     ) -> SessionMessage:
-        message = SessionMessage(session_id=session_id, role=role, content=content, tool_call_id=tool_call_id)
+        message = SessionMessage(
+            session_id=session_id,
+            role=role,
+            content=content,
+            tool_call_id=tool_call_id,
+            message_type=message_type,
+            step_number=step_number,
+            step_data=step_data,
+        )
         self.session.add(message)
         await self.session.flush()
         return message
@@ -241,6 +260,50 @@ class SessionRepository:
         session_obj.updated_at = datetime.utcnow()
         await self.session.flush()
         return session_obj
+
+    async def set_user(self, session_id: str, user_id: str) -> Optional[Session]:
+        """Link a session to a user."""
+        session_obj = await self.get_session(session_id)
+        if session_obj is None:
+            return None
+        session_obj.user_id = user_id
+        session_obj.updated_at = datetime.utcnow()
+        await self.session.flush()
+        return session_obj
+
+    async def update_title(self, session_id: str, title: str) -> Optional[Session]:
+        """Update chat session title."""
+        session_obj = await self.get_session(session_id)
+        if session_obj is None:
+            return None
+        session_obj.title = title
+        session_obj.updated_at = datetime.utcnow()
+        await self.session.flush()
+        return session_obj
+
+    async def list_user_sessions(
+        self,
+        user_id: str,
+        *,
+        limit: int = 50,
+        state: Optional[str] = None,
+    ) -> Sequence[Session]:
+        """List all chat sessions for a user, ordered by most recent."""
+        stmt = select(Session).where(Session.user_id == user_id)
+        if state:
+            stmt = stmt.where(Session.state == state)
+        stmt = stmt.order_by(Session.updated_at.desc()).limit(limit)
+        result = await self.session.scalars(stmt)
+        return result.all()
+
+    async def delete_session(self, session_id: str) -> bool:
+        """Delete a session and all related data."""
+        session_obj = await self.get_session(session_id)
+        if session_obj is None:
+            return False
+        await self.session.delete(session_obj)
+        await self.session.flush()
+        return True
 
     async def log_tool_execution(
         self,

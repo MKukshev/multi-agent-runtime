@@ -24,8 +24,9 @@ class SimpleAgent(BaseAgent):
         if system_prompt:
             await self._record_message(ChatMessage.text("system", system_prompt))
 
-        user_prompt = self._initial_user_request()
-        await self._record_message(ChatMessage.text("user", user_prompt))
+        user_prompt = self._initial_user_request()  # Formatted for LLM (not used in simple agent)
+        # Save original task to DB (without formatting)
+        await self._record_message(ChatMessage.text("user", self.task))
 
         intro = f"Using tools: {', '.join(self.available_tools) or 'none'}"
         message = f"Task: {self.task}"

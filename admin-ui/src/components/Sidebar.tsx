@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { UserMenu } from './UserMenu';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: '📊' },
@@ -20,7 +21,7 @@ export function Sidebar() {
     <aside className="w-64 bg-[var(--card)] border-r border-[var(--border)] p-4 flex flex-col">
       <div className="mb-8">
         <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-          Agent Runtime
+          Multi Agentic Runtime
         </h1>
         <p className="text-xs text-[var(--muted)] mt-1">Admin Dashboard</p>
       </div>
@@ -45,7 +46,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="pt-4 border-t border-[var(--border)]">
+      <div className="pt-4 border-t border-[var(--border)] space-y-3">
+        <UserMenu />
         <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
           <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse"></span>
           <span>Connected</span>

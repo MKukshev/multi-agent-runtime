@@ -478,14 +478,16 @@ export interface ErrorEvent {
 export interface MessageEvent {
   type: 'message';
   content: string;
+  session_id?: string;
 }
 
 export interface DoneEvent {
   type: 'done';
   finish_reason: string;
+  session_id?: string;
 }
 
-export type AgentEvent =
+export type AgentEvent = (
   | StepStartEvent
   | ToolCallEvent
   | ToolResultEvent
@@ -493,7 +495,8 @@ export type AgentEvent =
   | ThinkingEvent
   | ErrorEvent
   | MessageEvent
-  | DoneEvent;
+  | DoneEvent
+) & { session_id?: string };
 
 // Gateway API
 export const gatewayApi = {
@@ -503,15 +506,18 @@ export const gatewayApi = {
   },
 
   async getModels(): Promise<{ data: Model[] }> {
-    const res = await fetch(`${GATEWAY_API_URL}/v1/models`);
+    const res = await fetch(`${GATEWAY_API_URL}/v1/models`, {
+      credentials: 'include',
+    });
     return res.json();
   },
 
-  async chat(model: string, messages: ChatMessage[]): Promise<ChatCompletionResponse> {
+  async chat(model: string, messages: ChatMessage[], chatId?: string): Promise<ChatCompletionResponse> {
     const res = await fetch(`${GATEWAY_API_URL}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: false }),
+      credentials: 'include',
+      body: JSON.stringify({ model, messages, stream: false, chat_id: chatId }),
     });
     return res.json();
   },
@@ -521,13 +527,18 @@ export const gatewayApi = {
    */
   async *chatStream(
     model: string,
-    messages: ChatMessage[]
+    messages: ChatMessage[],
+    chatId?: string
   ): AsyncGenerator<AgentEvent, void, unknown> {
     const res = await fetch(`${GATEWAY_API_URL}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: true }),
+      credentials: 'include',
+      body: JSON.stringify({ model, messages, stream: true, chat_id: chatId }),
     });
+    
+    // Extract session_id from response header
+    let sessionId = res.headers.get('x-session-id');
 
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
@@ -552,7 +563,12 @@ export const gatewayApi = {
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          // Skip comments (session_id hints)
+          // Extract session_id from SSE comment
+          if (line.startsWith(': session_id=')) {
+            sessionId = line.slice(13);
+            continue;
+          }
+          // Skip other comments
           if (line.startsWith(':')) continue;
           
           if (line.startsWith('event: ')) {
@@ -574,7 +590,8 @@ export const gatewayApi = {
                     description: data.description,
                     status: data.status,
                     max_steps: data.max_steps,
-                  } as StepStartEvent;
+                    session_id: sessionId || undefined,
+                  } as AgentEvent;
                   break;
                 case 'tool_call':
                   yield {
@@ -582,7 +599,8 @@ export const gatewayApi = {
                     step: data.step,
                     tool: data.tool,
                     args: data.args,
-                  } as ToolCallEvent;
+                    session_id: sessionId || undefined,
+                  } as AgentEvent;
                   break;
                 case 'tool_result':
                   yield {
@@ -592,7 +610,8 @@ export const gatewayApi = {
                     result: data.result,
                     success: data.success,
                     duration_ms: data.duration_ms,
-                  } as ToolResultEvent;
+                    session_id: sessionId || undefined,
+                  } as AgentEvent;
                   break;
                 case 'step_end':
                   yield {
@@ -600,41 +619,44 @@ export const gatewayApi = {
                     step: data.step,
                     status: data.status,
                     duration_ms: data.duration_ms,
-                  } as StepEndEvent;
+                    session_id: sessionId || undefined,
+                  } as AgentEvent;
                   break;
                 case 'thinking':
                   yield {
                     type: 'thinking',
                     step: data.step,
                     content: data.content,
-                  } as ThinkingEvent;
+                    session_id: sessionId || undefined,
+                  } as AgentEvent;
                   break;
                 case 'error':
                   yield {
                     type: 'error',
                     step: data.step,
                     message: data.message,
-                  } as ErrorEvent;
+                    session_id: sessionId || undefined,
+                  } as AgentEvent;
                   break;
                 case 'message':
                   // OpenAI-style message chunk
                   const delta = data.choices?.[0]?.delta;
                   if (delta?.content) {
-                    yield { type: 'message', content: delta.content } as MessageEvent;
+                    yield { type: 'message', content: delta.content, session_id: sessionId || undefined } as AgentEvent;
                   }
                   break;
                 case 'done':
-                  yield { type: 'done', finish_reason: data.finish_reason || 'stop' } as DoneEvent;
+                  yield { type: 'done', finish_reason: data.finish_reason || 'stop', session_id: sessionId || undefined } as AgentEvent;
                   break;
                 default:
                   // Fallback: try to determine type from data structure
                   if ('choices' in data) {
                     const delta = data.choices?.[0]?.delta;
                     if (delta?.content) {
-                      yield { type: 'message', content: delta.content } as MessageEvent;
+                      yield { type: 'message', content: delta.content, session_id: sessionId || undefined } as AgentEvent;
                     }
                     if (data.finish_reason) {
-                      yield { type: 'done', finish_reason: data.finish_reason } as DoneEvent;
+                      yield { type: 'done', finish_reason: data.finish_reason, session_id: sessionId || undefined } as AgentEvent;
                     }
                   }
               }
@@ -654,6 +676,6 @@ export const gatewayApi = {
 // Agent base classes available
 export const AGENT_BASE_CLASSES = [
   { value: 'maruntime.core.agents.simple_agent:SimpleAgent', label: 'SimpleAgent (Basic)' },
-  { value: 'maruntime.core.agents.sgr_agent:SGRAgent', label: 'SGRAgent (Research)' },
   { value: 'maruntime.core.agents.tool_calling_agent:ToolCallingAgent', label: 'ToolCallingAgent' },
+  { value: 'maruntime.core.agents.flexible_tool_calling_agent:FlexibleToolCallingAgent', label: 'FlexibleToolCallingAgent (Free-form Answer)' },
 ];

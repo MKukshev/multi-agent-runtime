@@ -52,6 +52,7 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         template_config: TemplateRuntimeConfig | None = None,
         rules_engine: RulesEngine | None = None,
         llm_client_factory: LLMClientFactory | None = None,
+        user_id: str | None = None,
     ) -> None:
         self.id = f"{self.name}_{uuid.uuid4()}"
         self.task = task
@@ -78,6 +79,7 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
             dict(context_data) if context_data is not None else dict(getattr(session_context, "data", {}) or {})
         )
         self._stage: str | None = None
+        self._user_id: str | None = user_id
 
     @property
     def available_tools(self) -> Sequence[str]:
@@ -202,7 +204,9 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
                 self._context_data = dict(self.session_context.data)
             elif self.template_version_id:
                 self.session_context, self.message_store = await self.session_service.start_session(
-                    self.template_version_id, context=self._context_data
+                    self.template_version_id,
+                    context=self._context_data,
+                    user_id=self._user_id,
                 )
             else:
                 msg = "template_version_id is required to start a session"
@@ -234,6 +238,22 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
             await self.session_service.save_message(self.session_context.session_id, message)
         await self._persist_context()
         return message
+
+    async def _record_agent_step(
+        self,
+        message_type: str,
+        step_number: int,
+        step_data: dict[str, Any],
+    ) -> None:
+        """Record an agent step event to the database."""
+        await self._ensure_session_state()
+        if self.session_service and self.session_context:
+            await self.session_service.save_agent_step(
+                session_id=self.session_context.session_id,
+                message_type=message_type,
+                step_number=step_number,
+                step_data=step_data,
+            )
 
     def reset(self) -> None:
         """Clear session-scoped state so the agent can handle a new session."""

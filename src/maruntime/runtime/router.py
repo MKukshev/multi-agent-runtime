@@ -21,6 +21,15 @@ class RouteResult:
     entry: AgentDirectoryEntry | None
     events: AsyncGenerator[SSEEvent, None]
     session_context: SessionContext | None = None
+    _agent: "BaseAgent | None" = None
+    
+    def get_session_context(self) -> SessionContext | None:
+        """Get session context (may be set after agent execution starts)."""
+        if self.session_context:
+            return self.session_context
+        if self._agent:
+            return self._agent.session_context
+        return None
 
 
 class AgentRouter:
@@ -50,10 +59,18 @@ class AgentRouter:
         top_k: int | None = None,
         session_id: str | None = None,
         entry: AgentDirectoryEntry | None = None,
+        user_id: str | None = None,
     ) -> RouteResult:
         """Search for a suitable template and execute the matching agent.
         
         Returns a RouteResult with an async generator for real-time event streaming.
+        
+        Args:
+            task: The user's task/query
+            top_k: Number of templates to consider
+            session_id: Existing session ID to continue
+            entry: Pre-resolved agent directory entry
+            user_id: User ID to associate with new sessions
         """
 
         if entry is None:
@@ -73,11 +90,13 @@ class AgentRouter:
             template_config=template_config,
             tool_search_service=self._tool_search_service,
             rules_engine=self._rules_engine,
+            user_id=user_id,  # Pass user_id for new session creation
         )
         
         # Return RouteResult with async generator - events stream in real-time
+        # Note: session_context will be populated during agent.execute()
         events_gen = agent.execute(session_id=session_id)
-        return RouteResult(entry=entry, events=events_gen, session_context=agent.session_context)
+        return RouteResult(entry=entry, events=events_gen, session_context=None, _agent=agent)
 
     def _resolve_agent(
         self, entry: AgentDirectoryEntry | None, template_config: TemplateRuntimeConfig | None
