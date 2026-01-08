@@ -63,8 +63,62 @@ pip install -e .
   ```
 - Через Admin API можно публиковать инструменты и выдавать их в каталог. По умолчанию слушает `0.0.0.0:8001` и принимает заголовок `X-API-Key`, если задан `ADMIN_API_KEY`.
 
+### Admin UI (веб-интерфейс)
+Веб-интерфейс для управления платформой — Next.js приложение в директории `admin-ui/`.
+
+**Установка и запуск:**
+```bash
+cd admin-ui
+npm install
+npm run dev
+```
+
+Приложение запустится на `http://localhost:3000`.
+
+**Функциональность:**
+- **Templates** — управление шаблонами агентов и их версиями
+- **Instances** — просмотр и управление агентными инстансами (Named Slots)
+- **Sessions** — мониторинг сессий и истории сообщений
+- **Tools** — каталог инструментов
+- **Prompts** — редактирование системных промптов
+- **Chat** — тестовый интерфейс для взаимодействия с агентами
+
+**Требования:**
+- Node.js 18+
+- Запущенный Admin API на порту 8001
+
 ## Миграции и база данных
-- Инициализация и миграции управляются из `scripts/db.py`:
+
+### Быстрый старт (новый сервер)
+Для развёртывания на чистом сервере используйте скрипты из `scripts/db/`:
+
+```bash
+# Полная установка: создание БД + схема + начальные данные
+./scripts/db/deploy.sh full
+
+# Или по шагам:
+./scripts/db/deploy.sh init    # Только схема
+./scripts/db/deploy.sh seed    # Только данные
+```
+
+Параметры подключения через переменные окружения:
+```bash
+export DB_HOST=your-server.com
+export DB_PORT=5432
+export DB_USER=maruntime_user
+export DB_PASSWORD=secret
+export DB_NAME=maruntime
+
+./scripts/db/deploy.sh full
+```
+
+### Экспорт данных с локальной БД
+```bash
+./scripts/db/export_data.sh exported_data.sql
+```
+
+### Alembic миграции
+- Инициализация и миграции также управляются из `scripts/db.py`:
   ```bash
   export DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/maruntime
   python -m scripts.db init --url "${DATABASE_URL}"
@@ -72,6 +126,15 @@ pip install -e .
   ```
 - Для SQLite используйте `DATABASE_URL=sqlite+aiosqlite:///./dev.db`. Команда `init` создаёт схему через SQLAlchemy и проставляет ревизию Alembic (`head`).
 - Активные миграции находятся в корневом каталоге `alembic/versions`.
+
+### Структура скриптов БД
+```
+scripts/db/
+├── init_schema.sql   # Полная DDL-схема (10 таблиц)
+├── seed_data.sql     # Начальные данные (промпты, шаблоны, инстансы)
+├── deploy.sh         # Скрипт развёртывания
+└── export_data.sh    # Экспорт данных
+```
 
 ### Наполнение каталога инструментов и шаблонов
 - Сценарий `scripts/seed_catalog.py` подтянет определения инструментов и агентов из `sgr-agent-core`:
@@ -92,12 +155,47 @@ pip install -e .
 - После добавления кода добавьте команды `pytest` и `ruff`/`mypy` при необходимости.
 
 ## Развёртывание
-- **Container-based**: После появления `Dockerfile` соберите образ и задайте переменные окружения (`DATABASE_URL`, `SECRET_KEY`, `LOG_LEVEL`). Пример:
-  ```bash
-  docker build -t multi-agent-runtime .
-  docker run -p 8000:8000 -e DATABASE_URL=... multi-agent-runtime
-  ```
-- **Kubernetes**: рекомендуется разделить deployment'ы на gateway, runtime pool и admin API, используя общий ConfigMap для переменных окружения и отдельные Secret для ключей.
+
+### На внешний сервер (VPS/VM)
+
+1. **Подготовка PostgreSQL:**
+   ```bash
+   # На сервере с PostgreSQL
+   sudo -u postgres createuser maruntime_user -P
+   sudo -u postgres createdb maruntime -O maruntime_user
+   ```
+
+2. **Инициализация схемы:**
+   ```bash
+   # С локальной машины или на сервере
+   export DB_HOST=your-server.com
+   export DB_USER=maruntime_user
+   export DB_PASSWORD=your_password
+   export DB_NAME=maruntime
+   
+   ./scripts/db/deploy.sh full
+   ```
+
+3. **Запуск сервисов:**
+   ```bash
+   export DATABASE_URL=postgresql+asyncpg://maruntime_user:password@localhost:5432/maruntime
+   
+   # Gateway (порт 8000)
+   uvicorn maruntime.gateway.main:app --host 0.0.0.0 --port 8000
+   
+   # Admin API (порт 8001)
+   python -m scripts.run_admin
+   ```
+
+### Container-based
+После появления `Dockerfile` соберите образ и задайте переменные окружения (`DATABASE_URL`, `SECRET_KEY`, `LOG_LEVEL`). Пример:
+```bash
+docker build -t multi-agent-runtime .
+docker run -p 8000:8000 -e DATABASE_URL=... multi-agent-runtime
+```
+
+### Kubernetes
+Рекомендуется разделить deployment'ы на gateway, runtime pool и admin API, используя общий ConfigMap для переменных окружения и отдельные Secret для ключей.
 
 ## Полезные ссылки
 - Архитектура и компоненты: `docs/02-target-architecture-variant-b-v2.md`

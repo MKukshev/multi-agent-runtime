@@ -424,6 +424,77 @@ export const adminApi = {
   },
 };
 
+// SSE Event Types for Agent Steps
+export interface StepStartEvent {
+  type: 'step_start';
+  step: number;
+  max_steps: number;
+  description: string;
+  status: 'running';
+  timestamp: number;
+}
+
+export interface ToolCallEvent {
+  type: 'tool_call';
+  step: number;
+  tool: string;
+  args: Record<string, unknown>;
+  status: 'running';
+  timestamp: number;
+}
+
+export interface ToolResultEvent {
+  type: 'tool_result';
+  step: number;
+  tool: string;
+  result: string;
+  success: boolean;
+  duration_ms: number | null;
+  timestamp: number;
+}
+
+export interface StepEndEvent {
+  type: 'step_end';
+  step: number;
+  status: 'completed' | 'error' | 'running';
+  duration_ms: number | null;
+  timestamp: number;
+}
+
+export interface ThinkingEvent {
+  type: 'thinking';
+  step: number;
+  content: string;
+  timestamp: number;
+}
+
+export interface ErrorEvent {
+  type: 'error';
+  step: number;
+  message: string;
+  timestamp: number;
+}
+
+export interface MessageEvent {
+  type: 'message';
+  content: string;
+}
+
+export interface DoneEvent {
+  type: 'done';
+  finish_reason: string;
+}
+
+export type AgentEvent =
+  | StepStartEvent
+  | ToolCallEvent
+  | ToolResultEvent
+  | StepEndEvent
+  | ThinkingEvent
+  | ErrorEvent
+  | MessageEvent
+  | DoneEvent;
+
 // Gateway API
 export const gatewayApi = {
   async health(): Promise<{ status: string }> {
@@ -443,6 +514,140 @@ export const gatewayApi = {
       body: JSON.stringify({ model, messages, stream: false }),
     });
     return res.json();
+  },
+
+  /**
+   * Stream chat completions with SSE events for agent steps
+   */
+  async *chatStream(
+    model: string,
+    messages: ChatMessage[]
+  ): AsyncGenerator<AgentEvent, void, unknown> {
+    const res = await fetch(`${GATEWAY_API_URL}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages, stream: true }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEventType = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          // Skip comments (session_id hints)
+          if (line.startsWith(':')) continue;
+          
+          if (line.startsWith('event: ')) {
+            currentEventType = line.slice(7).trim();
+            continue;
+          }
+          
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6);
+            try {
+              const data = JSON.parse(jsonStr);
+              
+              // Use event type from SSE header if available
+              switch (currentEventType) {
+                case 'step_start':
+                  yield {
+                    type: 'step_start',
+                    step: data.step,
+                    description: data.description,
+                    status: data.status,
+                    max_steps: data.max_steps,
+                  } as StepStartEvent;
+                  break;
+                case 'tool_call':
+                  yield {
+                    type: 'tool_call',
+                    step: data.step,
+                    tool: data.tool,
+                    args: data.args,
+                  } as ToolCallEvent;
+                  break;
+                case 'tool_result':
+                  yield {
+                    type: 'tool_result',
+                    step: data.step,
+                    tool: data.tool,
+                    result: data.result,
+                    success: data.success,
+                    duration_ms: data.duration_ms,
+                  } as ToolResultEvent;
+                  break;
+                case 'step_end':
+                  yield {
+                    type: 'step_end',
+                    step: data.step,
+                    status: data.status,
+                    duration_ms: data.duration_ms,
+                  } as StepEndEvent;
+                  break;
+                case 'thinking':
+                  yield {
+                    type: 'thinking',
+                    step: data.step,
+                    content: data.content,
+                  } as ThinkingEvent;
+                  break;
+                case 'error':
+                  yield {
+                    type: 'error',
+                    step: data.step,
+                    message: data.message,
+                  } as ErrorEvent;
+                  break;
+                case 'message':
+                  // OpenAI-style message chunk
+                  const delta = data.choices?.[0]?.delta;
+                  if (delta?.content) {
+                    yield { type: 'message', content: delta.content } as MessageEvent;
+                  }
+                  break;
+                case 'done':
+                  yield { type: 'done', finish_reason: data.finish_reason || 'stop' } as DoneEvent;
+                  break;
+                default:
+                  // Fallback: try to determine type from data structure
+                  if ('choices' in data) {
+                    const delta = data.choices?.[0]?.delta;
+                    if (delta?.content) {
+                      yield { type: 'message', content: delta.content } as MessageEvent;
+                    }
+                    if (data.finish_reason) {
+                      yield { type: 'done', finish_reason: data.finish_reason } as DoneEvent;
+                    }
+                  }
+              }
+              currentEventType = ''; // Reset after processing
+            } catch {
+              // Ignore parse errors for malformed JSON
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   },
 };
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, AsyncGenerator, Callable, Sequence
 
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -47,9 +47,10 @@ def _extract_task(messages: Sequence[dict[str, Any]]) -> str:
     return str(content)
 
 
-def _aggregate_content(events: Iterable[Any]) -> str:
+async def _aggregate_content(events: AsyncGenerator[Any, None]) -> str:
+    """Aggregate content from async event generator (for non-streaming responses)."""
     chunks: list[str] = []
-    for event in events:
+    async for event in events:
         if getattr(event, "event", "") != "message":
             continue
         data = getattr(event, "data", {})
@@ -201,9 +202,9 @@ def create_gateway_router(
                     await db_session.commit()
 
         if request.stream:
-            async def event_stream() -> Iterable[str]:
+            async def event_stream() -> AsyncGenerator[str, None]:
                 try:
-                    for event in result.events:
+                    async for event in result.events:
                         if resolved_session:
                             yield f": session_id={resolved_session}\n"
                         yield event.render()
@@ -221,7 +222,7 @@ def create_gateway_router(
         # Release instance for non-streaming
         await release_instance()
 
-        content = _aggregate_content(result.events)
+        content = await _aggregate_content(result.events)
         response_payload = {
             "id": resolved_session or request.model,
             "object": "chat.completion",

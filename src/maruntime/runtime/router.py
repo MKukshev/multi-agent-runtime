@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Type
+from typing import AsyncGenerator, Type
 
 from maruntime.retrieval.tool_search import ToolSearchService
 from maruntime.runtime.templates import TemplateRuntimeConfig, TemplateService
@@ -19,7 +19,7 @@ class RouteResult:
     """Outcome of a routing decision and execution."""
 
     entry: AgentDirectoryEntry | None
-    events: Iterable[SSEEvent]
+    events: AsyncGenerator[SSEEvent, None]
     session_context: SessionContext | None = None
 
 
@@ -51,7 +51,10 @@ class AgentRouter:
         session_id: str | None = None,
         entry: AgentDirectoryEntry | None = None,
     ) -> RouteResult:
-        """Search for a suitable template and execute the matching agent."""
+        """Search for a suitable template and execute the matching agent.
+        
+        Returns a RouteResult with an async generator for real-time event streaming.
+        """
 
         if entry is None:
             results = await self._agent_directory.search(query=task, top_k=top_k)
@@ -71,8 +74,10 @@ class AgentRouter:
             tool_search_service=self._tool_search_service,
             rules_engine=self._rules_engine,
         )
-        events = await agent.execute(session_id=session_id)
-        return RouteResult(entry=entry, events=events, session_context=agent.session_context)
+        
+        # Return RouteResult with async generator - events stream in real-time
+        events_gen = agent.execute(session_id=session_id)
+        return RouteResult(entry=entry, events=events_gen, session_context=agent.session_context)
 
     def _resolve_agent(
         self, entry: AgentDirectoryEntry | None, template_config: TemplateRuntimeConfig | None

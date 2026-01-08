@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 import uuid
-from typing import Any, ClassVar, Iterable, List, Sequence, Type
+from typing import Any, AsyncGenerator, ClassVar, Iterable, List, Sequence, Type
 
 from maruntime.core.llm import LLMClientFactory, content_to_text
 from maruntime.core.services.prompt_loader import PromptsConfig, PromptLoader
@@ -84,8 +84,10 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         return [tool.tool_name or tool.__name__.lower() for tool in self.toolkit]
 
     @abc.abstractmethod
-    async def run(self) -> Iterable[SSEEvent]:
-        """Execute the agent workflow and yield SSE events."""
+    async def run(self) -> AsyncGenerator[SSEEvent, None]:
+        """Execute the agent workflow and yield SSE events in real-time."""
+        # Must be implemented as async generator with yield statements
+        yield  # type: ignore  # pragma: no cover
 
     @property
     def prompt_tool_names(self) -> list[str]:
@@ -241,8 +243,11 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         self._context_data = {}
         self._prompt_tool_names = None
 
-    async def execute(self, *, session_id: str | None = None) -> Iterable[SSEEvent]:
-        """Run the agent workflow with persistence-aware state handling."""
+    async def execute(self, *, session_id: str | None = None) -> AsyncGenerator[SSEEvent, None]:
+        """Run the agent workflow with persistence-aware state handling.
+        
+        This is an async generator that yields SSE events in real-time as the agent executes.
+        """
 
         if session_id:
             if not self.session_service:
@@ -256,23 +261,24 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
             await self.session_service.set_state(self.session_context.session_id, "ACTIVE")
 
         try:
-            events = await self.run()
+            async for event in self.run():
+                yield event
             if self.session_service:
                 await self.session_service.set_state(self.session_context.session_id, "COMPLETED")
-            return events
         except WaitingForClarification:
             if self.session_service:
                 await self.session_service.set_state(self.session_context.session_id, "WAITING")
-            return []
+            return
         except Exception:
             if self.session_service and self.session_context:
                 await self.session_service.set_state(self.session_context.session_id, "FAILED")
             raise
 
-    async def resume(self, session_id: str) -> Iterable[SSEEvent]:
+    async def resume(self, session_id: str) -> AsyncGenerator[SSEEvent, None]:
         """Resume execution for an existing session."""
 
-        return await self.execute(session_id=session_id)
+        async for event in self.execute(session_id=session_id):
+            yield event
 
     def _require_llm_policy(self) -> LLMPolicy:
         if self.template_config is None or self.template_config.llm_policy is None:

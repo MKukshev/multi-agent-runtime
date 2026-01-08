@@ -7,7 +7,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Type
+from typing import Any, AsyncGenerator, Type
 
 from openai import AsyncOpenAI
 
@@ -214,8 +214,8 @@ class ToolCallingAgent(BaseAgent):
             f"{'#'*60}"
         )
 
-    async def run(self) -> Iterable[SSEEvent]:
-        """Execute the ReAct loop."""
+    async def run(self) -> AsyncGenerator[SSEEvent, None]:
+        """Execute the ReAct loop with real-time streaming step events."""
         await self._ensure_session_state()
         await self._refresh_prompt_tools()
 
@@ -227,11 +227,11 @@ class ToolCallingAgent(BaseAgent):
             self._get_logger().error("No LLM policy configured!")
             error_msg = "Error: No LLM configuration. Please configure llm_policy in template."
             await self._record_message(ChatMessage.text("assistant", error_msg))
-            return self.streaming_generator.stream_text(error_msg)
+            yield self.streaming_generator.error(0, error_msg)
+            return
 
         # Initialize session-specific logger
         session_id = self.session_context.session_id if self.session_context else "ephemeral"
-        # Use template name (e.g., "memory-agent", "sgr-research-agent") instead of class name
         agent_name = getattr(self.template_config, "template_name", None) or self.name
         self._session_logger = setup_session_logger(agent_name or "agent", session_id)
         
@@ -249,22 +249,29 @@ class ToolCallingAgent(BaseAgent):
         await self._record_message(ChatMessage.text("user", user_prompt))
         self._get_logger().info(f"📥 User request: '{user_prompt[:200]}...'")
 
-        # Prepare tools for OpenAI (filter out planning-only tools)
+        # Prepare tools for OpenAI
         tools_schema = self._build_tools_schema()
         if not tools_schema:
             error_msg = "Error: No tools available for this agent."
             await self._record_message(ChatMessage.text("assistant", error_msg))
-            return self.streaming_generator.stream_text(error_msg)
+            yield self.streaming_generator.error(0, error_msg)
+            return
 
         self._get_logger().info(f"🛠️ Available tools: {[t['function']['name'] for t in tools_schema]}")
 
-        # ReAct loop
+        # ReAct loop with real-time streaming events
         all_content: list[str] = []
         final_result: str | None = None
         
         while not self._finished and self._iteration < self.max_iterations:
             self._iteration += 1
             self._log_step_start()
+            
+            # Emit step_start event immediately
+            step_description = f"Analyzing and selecting next action..."
+            yield self.streaming_generator.step_start(
+                self._iteration, self.max_iterations, step_description
+            )
 
             try:
                 self._log_llm_request(len(tools_schema))
@@ -283,18 +290,22 @@ class ToolCallingAgent(BaseAgent):
 
                 # Check if LLM wants to call a tool
                 if assistant_message.tool_calls:
-                    # Process each tool call
                     for tool_call in assistant_message.tool_calls:
                         tool_name = tool_call.function.name
                         tool_args_str = tool_call.function.arguments
 
-                        # Parse args for logging
+                        # Parse args
                         try:
                             tool_args = json.loads(tool_args_str) if tool_args_str else {}
                         except json.JSONDecodeError:
                             tool_args = {"raw": tool_args_str}
 
                         all_content.append(f"\n🔧 Calling: {tool_name}")
+                        
+                        # Emit tool_call event immediately
+                        yield self.streaming_generator.tool_call(
+                            self._iteration, tool_name, tool_args
+                        )
 
                         # Execute the tool
                         result = await self._execute_tool(tool_name, tool_args_str)
@@ -302,9 +313,14 @@ class ToolCallingAgent(BaseAgent):
                         # Detailed logging
                         self._log_tool_execution(tool_name, tool_args, result)
                         
+                        # Emit tool_result event immediately
+                        yield self.streaming_generator.tool_result(
+                            self._iteration, tool_name, result, success=not result.startswith("Error")
+                        )
+                        
                         all_content.append(f"\n📋 Result: {result[:200]}..." if len(result) > 200 else f"\n📋 Result: {result}")
 
-                        # Add tool call and result to conversation
+                        # Add to conversation
                         self._conversation.append({
                             "role": "assistant",
                             "content": None,
@@ -323,15 +339,13 @@ class ToolCallingAgent(BaseAgent):
                             "content": result,
                         })
 
-                        # Check if this was a finish tool or agent state is terminal
+                        # Check finish conditions
                         if tool_name.lower() in ("finalanswertool", "final_answer", "finalanswer"):
                             self._finished = True
-                            # Use execution_result from context if available
                             final_result = self._agent_context.execution_result or result
                             all_content.append(f"\n\n✅ Final Answer:\n{final_result}")
                             break
                         
-                        # Also check if agent state changed to terminal
                         if self._agent_context.is_finished():
                             self._finished = True
                             final_result = self._agent_context.execution_result
@@ -347,20 +361,30 @@ class ToolCallingAgent(BaseAgent):
                             "content": assistant_message.content,
                         })
                         final_result = assistant_message.content
+                        
+                        # Emit thinking event immediately
+                        yield self.streaming_generator.thinking(
+                            self._iteration, assistant_message.content[:500]
+                        )
                     self._finished = True
 
-                # Log iteration summary
+                # Emit step_end event immediately
+                yield self.streaming_generator.step_end(
+                    self._iteration, "completed" if not self._finished or final_result else "running"
+                )
+                
                 self._log_iteration_summary()
 
             except Exception as e:
                 self._get_logger().error(f"❌ Error in iteration {self._iteration}: {e}", exc_info=True)
                 all_content.append(f"\n❌ Error: {str(e)}")
+                yield self.streaming_generator.error(self._iteration, str(e))
+                yield self.streaming_generator.step_end(self._iteration, "error")
                 self._finished = True
 
-        # If we hit max iterations without finishing, generate a fallback response
+        # Handle max iterations
         if not self._finished and self._iteration >= self.max_iterations:
-            self._get_logger().warning(f"⚠️ Max iterations ({self.max_iterations}) reached without FinalAnswerTool call")
-            # Try to generate a summary from collected data
+            self._get_logger().warning(f"⚠️ Max iterations ({self.max_iterations}) reached")
             fallback_msg = self._generate_fallback_response()
             all_content.append(f"\n\n⚠️ Max iterations reached. Summary:\n{fallback_msg}")
             final_result = fallback_msg
@@ -377,7 +401,10 @@ class ToolCallingAgent(BaseAgent):
         )
 
         await self._record_message(ChatMessage.text("assistant", final_content))
-        return self.streaming_generator.stream_text(final_content)
+        
+        # Stream final text events
+        for event in self.streaming_generator.stream_text(final_result or final_content):
+            yield event
 
     def _generate_fallback_response(self) -> str:
         """Generate a fallback response when max iterations is reached.
