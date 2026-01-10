@@ -293,7 +293,7 @@ def create_gateway_router(
                                     item.get("text", "") if isinstance(item, dict) else str(item)
                                     for item in user_content
                                 )
-                            chat_memory.save_message(
+                            await chat_memory.save_message(
                                 user_id=_user_id,
                                 session_id=_resolved_session,
                                 role="user",
@@ -304,7 +304,7 @@ def create_gateway_router(
                         
                         # Save assistant response
                         final_content = "".join(accumulated_content) or "Task completed."
-                        chat_memory.save_message(
+                        await chat_memory.save_message(
                             user_id=_user_id,
                             session_id=_resolved_session,
                             role="assistant",
@@ -345,7 +345,7 @@ def create_gateway_router(
                         item.get("text", "") if isinstance(item, dict) else str(item)
                         for item in user_content
                     )
-                chat_memory.save_message(
+                await chat_memory.save_message(
                     user_id=user_id,
                     session_id=resolved_session,
                     role="user",
@@ -355,7 +355,7 @@ def create_gateway_router(
                 )
             
             # Save assistant response
-            chat_memory.save_message(
+            await chat_memory.save_message(
                 user_id=user_id,
                 session_id=resolved_session,
                 role="assistant",

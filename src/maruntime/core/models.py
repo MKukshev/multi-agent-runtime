@@ -71,6 +71,10 @@ class AgentContext(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
+    # User/session identity
+    user_id: str | None = Field(default=None, description="Authenticated user ID")
+    session_id: str | None = Field(default=None, description="Current session ID")
+
     # Execution state
     state: AgentStatesEnum = Field(default=AgentStatesEnum.INITED, description="Current agent state")
     iteration: int = Field(default=0, description="Current iteration number")

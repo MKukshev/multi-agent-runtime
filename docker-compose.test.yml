@@ -1,0 +1,35 @@
+version: '3.8'
+
+# Test-specific Docker Compose configuration
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d
+#   TEST_DATABASE_URL=postgresql+asyncpg://test:test@localhost:5433/test_maruntime pytest tests/ -v
+#   docker compose -f docker-compose.test.yml down -v
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: maruntime-postgres-test
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test_maruntime
+    ports:
+      - "5433:5432"  # Different port to avoid conflict with main DB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d test_maruntime"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data  # Use tmpfs for faster tests
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_trgm"
+      - "-c"
+      - "log_statement=none"
+      - "-c"
+      - "fsync=off"
+      - "-c"
+      - "synchronous_commit=off"

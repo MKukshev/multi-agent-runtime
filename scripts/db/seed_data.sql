@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Multi-Agent Runtime - Seed Data
--- Version: 20260108
+-- Version: 20260109
 -- =============================================================================
 
 -- =============================================================================
@@ -8,7 +8,7 @@
 -- =============================================================================
 
 INSERT INTO system_prompts (id, name, description, content, placeholders, is_active, created_at, updated_at)
-VALUES 
+VALUES
 (
     'system',
     'System Prompt',
@@ -89,7 +89,7 @@ Please continue with your task using this additional information.
 -- =============================================================================
 
 INSERT INTO agent_templates (id, name, description, active_version_id, created_at, updated_at)
-VALUES 
+VALUES
 (
     'e411e337-9212-4a4c-b292-abb16022f617',
     'sgr-research-agent',
@@ -114,7 +114,7 @@ VALUES
 -- SGR Research Agent v1
 INSERT INTO template_versions (id, template_id, version, settings, prompt, tools, is_active, created_at)
 VALUES (
-    'v1-e411e337-9212-4a4c-b292-abb16022f617',
+    'a1111111-1111-4111-8111-111111111111',
     'e411e337-9212-4a4c-b292-abb16022f617',
     1,
     '{
@@ -124,7 +124,7 @@ VALUES (
         "max_iterations": 15
     }',
     NULL,
-    '["ReasoningTool", "WebSearchTool", "ExtractPageContentTool", "ClarificationTool", "FinalAnswerTool"]',
+    '["reasoningtool", "websearchtool", "extractpagecontenttool", "clarificationtool", "finalanswertool"]',
     true,
     NOW()
 );
@@ -132,7 +132,7 @@ VALUES (
 -- Memory Agent v1
 INSERT INTO template_versions (id, template_id, version, settings, prompt, tools, is_active, created_at)
 VALUES (
-    'v1-f7a8b9c0-1234-5678-9abc-def012345678',
+    'b2222222-2222-4222-8222-222222222222',
     'f7a8b9c0-1234-5678-9abc-def012345678',
     1,
     '{
@@ -142,14 +142,14 @@ VALUES (
         "max_iterations": 10
     }',
     NULL,
-    '["ReasoningTool", "MemoryReadTool", "MemoryWriteTool", "ClarificationTool", "FinalAnswerTool"]',
+    '["reasoningtool", "readfiletool", "createfiletool", "updatefiletool", "createdirtool", "getlistfilestool", "checkiffileexiststool", "checkifdirexiststool", "gotolinktool", "getsizetool", "deletefiletool", "chathistorysearchtool", "clarificationtool", "finalanswertool"]',
     true,
     NOW()
 );
 
 -- Update active versions
-UPDATE agent_templates SET active_version_id = 'v1-e411e337-9212-4a4c-b292-abb16022f617' WHERE id = 'e411e337-9212-4a4c-b292-abb16022f617';
-UPDATE agent_templates SET active_version_id = 'v1-f7a8b9c0-1234-5678-9abc-def012345678' WHERE id = 'f7a8b9c0-1234-5678-9abc-def012345678';
+UPDATE agent_templates SET active_version_id = 'a1111111-1111-4111-8111-111111111111' WHERE id = 'e411e337-9212-4a4c-b292-abb16022f617';
+UPDATE agent_templates SET active_version_id = 'b2222222-2222-4222-8222-222222222222' WHERE id = 'f7a8b9c0-1234-5678-9abc-def012345678';
 
 -- =============================================================================
 -- Agent Instances (Named Slots)
@@ -159,11 +159,11 @@ INSERT INTO agent_instances (
     id, template_id, template_version_id, name, display_name, description,
     status, is_enabled, auto_start, priority, created_at
 )
-VALUES 
+VALUES
 (
     '8531cecd-3e43-4823-a240-3b1f9c7749aa',
     'e411e337-9212-4a4c-b292-abb16022f617',
-    'v1-e411e337-9212-4a4c-b292-abb16022f617',
+    'a1111111-1111-4111-8111-111111111111',
     'research-agent-1',
     'Research Agent #1',
     'Primary research agent instance',
@@ -176,7 +176,7 @@ VALUES
 (
     '7bbd7ca0-c0a9-4d0e-8474-9ab627d2e52b',
     'e411e337-9212-4a4c-b292-abb16022f617',
-    'v1-e411e337-9212-4a4c-b292-abb16022f617',
+    'a1111111-1111-4111-8111-111111111111',
     'research-agent-2',
     'Research Agent #2',
     'Secondary research agent instance',
@@ -189,7 +189,7 @@ VALUES
 (
     'a1b2c3d4-5678-9abc-def0-123456789abc',
     'f7a8b9c0-1234-5678-9abc-def012345678',
-    'v1-f7a8b9c0-1234-5678-9abc-def012345678',
+    'b2222222-2222-4222-8222-222222222222',
     'memory-agent-1',
     'Memory Agent #1',
     'Primary memory agent instance',

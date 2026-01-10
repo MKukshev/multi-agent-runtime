@@ -5,7 +5,7 @@ import { useState } from 'react';
 export type StepStatus = 'running' | 'completed' | 'error';
 
 export interface ToolExecution {
-  tool: string;
+  tool?: string;
   args: Record<string, unknown>;
   result?: string;
   success?: boolean;
@@ -53,7 +53,8 @@ const StatusIcon = ({ status }: { status: StepStatus }) => {
   }
 };
 
-const ToolIcon = ({ tool }: { tool: string }) => {
+const ToolIcon = ({ tool }: { tool: string | undefined }) => {
+  if (!tool) return '🔧';
   const toolLower = tool.toLowerCase();
   if (toolLower.includes('search') || toolLower.includes('web')) return '🔍';
   if (toolLower.includes('reasoning') || toolLower.includes('think')) return '🧠';
@@ -104,7 +105,7 @@ export function AgentStep({ data, defaultExpanded = false }: AgentStepProps) {
             </span>
             {data.tools.length > 0 && (
               <span className="text-xs text-[var(--muted)]">
-                {data.tools.map(t => t.tool).join(' → ')}
+                {data.tools.map(t => t.tool || 'unknown').join(' → ')}
               </span>
             )}
           </div>
@@ -139,7 +140,7 @@ export function AgentStep({ data, defaultExpanded = false }: AgentStepProps) {
             <div key={idx} className="px-4 py-3 border-b border-[var(--border)] last:border-b-0">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-lg">{ToolIcon({ tool: tool.tool })}</span>
-                <span className="font-mono text-sm font-medium">{tool.tool}</span>
+                <span className="font-mono text-sm font-medium">{tool.tool || 'unknown'}</span>
                 {tool.success !== undefined && (
                   <span className={`text-xs px-1.5 py-0.5 rounded ${
                     tool.success 
@@ -170,7 +171,7 @@ export function AgentStep({ data, defaultExpanded = false }: AgentStepProps) {
 
               {/* Result */}
               {tool.result && (
-                <details open={tool.tool.toLowerCase().includes('final')}>
+                <details open={tool.tool?.toLowerCase().includes('final')}>
                   <summary className="text-xs text-[var(--muted)] cursor-pointer hover:text-[var(--foreground)]">
                     Result
                   </summary>

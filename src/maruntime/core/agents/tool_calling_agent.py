@@ -495,6 +495,11 @@ class ToolCallingAgent(BaseAgent):
             # Parse arguments
             args = json.loads(args_json) if args_json else {}
 
+            # Update context with identity info for tools
+            self._agent_context.user_id = self._user_id
+            if self.session_context:
+                self._agent_context.session_id = self.session_context.session_id
+
             # Instantiate and call the tool
             if issubclass(tool_cls, PydanticTool):
                 tool_instance = tool_cls(**args)

@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
 
 
@@ -190,6 +190,25 @@ class SessionMessage(Base):
     session: Mapped[Session] = relationship("Session", back_populates="messages")
 
 
+class ChatTurn(Base):
+    """Indexed chat turn (user message + assistant response) for fast retrieval."""
+
+    __tablename__ = "chat_turns"
+    __table_args__ = (UniqueConstraint("user_id", "chat_id", "turn_index", name="uq_chat_turns_order"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    chat_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    turn_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    assistant_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class ToolExecution(Base):
     __tablename__ = "tool_executions"
 
@@ -340,6 +359,7 @@ __all__ = [
     "Artifact",
     "AuthSession",
     "Base",
+    "ChatTurn",
     "Session",
     "SessionMessage",
     "Source",

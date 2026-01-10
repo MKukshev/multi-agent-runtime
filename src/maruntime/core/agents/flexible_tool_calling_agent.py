@@ -449,6 +449,10 @@ class FlexibleToolCallingAgent(BaseAgent):
         try:
             args = json.loads(args_json) if args_json else {}
 
+            self._agent_context.user_id = self._user_id
+            if self.session_context:
+                self._agent_context.session_id = self.session_context.session_id
+
             if issubclass(tool_cls, PydanticTool):
                 tool_instance = tool_cls(**args)
                 result = await tool_instance(context=self._agent_context, config=None)

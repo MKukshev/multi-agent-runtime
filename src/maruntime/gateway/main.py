@@ -10,6 +10,7 @@ import maruntime.core.tools  # noqa: F401
 
 from maruntime.auth.middleware import AuthMiddleware
 from maruntime.auth.routes import create_auth_router
+from maruntime.core.services.chat_memory_service import get_chat_memory_service
 from maruntime.gateway.routes import create_gateway_router
 from maruntime.observability import MetricsReporter
 from maruntime.persistence import create_engine, create_session_factory
@@ -28,6 +29,9 @@ agent_directory = AgentDirectoryService(session_factory)
 tool_search = ToolSearchService(session_factory)
 security_policy = SecurityPolicy()
 metrics = MetricsReporter()
+
+chat_fts_config = os.getenv("CHAT_FTS_CONFIG", "russian")
+get_chat_memory_service(session_factory=session_factory, fts_config=chat_fts_config)
 
 app = FastAPI(title="Multi-Agent Gateway", version="0.1.0")
 

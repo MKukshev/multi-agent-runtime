@@ -28,6 +28,7 @@ from maruntime.core.tools.web_search_tool import WebSearchTool
 # Utility Tools
 from maruntime.core.tools.delegate_tool import DelegateTemplateTool
 from maruntime.core.tools.echo import EchoTool
+from maruntime.core.tools.chat_history_search import ChatHistorySearchTool
 
 # Memory Tools
 from maruntime.core.tools.mem_tools import (
@@ -63,6 +64,7 @@ __all__ = [
     # Utility Tools
     "EchoTool",
     "DelegateTemplateTool",
+    "ChatHistorySearchTool",
     # Memory Tools
     "CheckIfDirExistsTool",
     "CheckIfFileExistsTool",

@@ -134,19 +134,18 @@ export default function ChatPage() {
               const step = currentSteps.find(s => s.step === stepNumber);
               if (step) {
                 step.tools.push({
-                  name: stepData.tool_name || 'Unknown',
+                  tool: stepData.tool_name || 'Unknown',
                   args: stepData.tool_args || {},
-                  status: 'running' as const,
                 });
               }
             } else if (messageType === 'tool_result') {
               // Find the step and update tool result
               const step = currentSteps.find(s => s.step === stepNumber);
               if (step && step.tools.length > 0) {
-                const tool = step.tools.find(t => t.name === stepData.tool_name);
+                const tool = step.tools.find(t => t.tool === stepData.tool_name);
                 if (tool) {
                   tool.result = stepData.result;
-                  tool.status = stepData.success ? 'completed' : 'error';
+                  tool.success = stepData.success;
                 }
               }
             } else if (messageType === 'step_end') {
