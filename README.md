@@ -193,39 +193,58 @@ scripts/db/
 
 **1. Настройка переменных окружения:**
 ```bash
-# Создайте .env файл
+# Создайте .env файл для production (внешняя БД)
 cat > .env << EOF
-DB_PASSWORD=your_secure_password
+DATABASE_URL=postgresql+asyncpg://user:password@your-postgres-host:5432/maruntime
 OPENAI_API_KEY=sk-your-openai-key
+NEXT_PUBLIC_GATEWAY_API_URL=https://your-domain.com/api
+NEXT_PUBLIC_ADMIN_API_URL=https://your-domain.com/admin-api
 EOF
 ```
 
-**2. Запуск всех сервисов:**
+**2. Запуск сервисов:**
 ```bash
-# Сборка и запуск
+# Production: только приложения (БД внешняя)
 docker-compose up -d --build
 
-# Применение миграций БД
+# Применение миграций к внешней БД
 docker-compose --profile migrate up migrate
 
 # Загрузка начальных данных (опционально)
 docker-compose --profile seed up seed
 ```
 
-**3. Сервисы:**
-| Сервис | URL | Описание |
-|--------|-----|----------|
-| Admin UI | http://localhost:3000 | Веб-интерфейс |
-| Gateway API | http://localhost:8000 | OpenAI-совместимый API |
-| Admin API | http://localhost:8001 | CRUD для шаблонов/инструментов |
-| PostgreSQL | localhost:5432 | База данных |
+**3. Локальная разработка (с контейнером PostgreSQL):**
+```bash
+# Запуск с локальной PostgreSQL
+docker-compose --profile postgres up -d --build
 
-**4. С nginx (всё через порт 80):**
+# Или запуск всего (приложения + postgres)
+docker-compose --profile full up -d --build
+```
+
+**4. Сервисы (порты по умолчанию):**
+| Сервис | Порт | Переменная | Описание |
+|--------|------|------------|----------|
+| Admin UI | 9050 | `ADMIN_UI_PORT` | Веб-интерфейс |
+| Gateway API | 9051 | `GATEWAY_PORT` | OpenAI-совместимый API |
+| Admin API | 9052 | `ADMIN_API_PORT` | CRUD для шаблонов/инструментов |
+| PostgreSQL | 5432 | `POSTGRES_PORT` | БД (только с профилем `postgres`) |
+
+**5. Кастомизация портов:**
+```bash
+# В .env
+ADMIN_UI_PORT=3000
+GATEWAY_PORT=8000
+ADMIN_API_PORT=8001
+```
+
+**5. С встроенным nginx (всё через порт 80):**
 ```bash
 docker-compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
 ```
 
-**5. Полезные команды:**
+**6. Полезные команды:**
 ```bash
 # Логи
 docker-compose logs -f gateway
@@ -237,10 +256,139 @@ docker-compose down
 docker-compose down -v
 ```
 
-**6. Volumes:**
+**7. Volumes:**
 - `maruntime-postgres-data` — данные PostgreSQL
 - `maruntime-memory-data` — файлы памяти агентов
 - `maruntime-logs-data` — логи агентов
+
+### Интеграция с внешним nginx/reverse proxy
+
+Если в целевой инфраструктуре уже есть nginx или другой reverse proxy (Traefik, HAProxy, AWS ALB), используйте следующую конфигурацию:
+
+**1. Переменные окружения для сборки Admin UI:**
+```bash
+# .env - укажите внешние URL через которые клиент будет обращаться к API
+NEXT_PUBLIC_GATEWAY_API_URL=https://your-domain.com/api
+NEXT_PUBLIC_ADMIN_API_URL=https://your-domain.com/admin-api
+
+# Порты для docker-compose (внутренние)
+ADMIN_UI_PORT=9050
+GATEWAY_PORT=9051
+ADMIN_API_PORT=9052
+```
+
+**2. Конфигурация внешнего nginx:**
+```nginx
+# /etc/nginx/sites-available/maruntime.conf
+
+upstream maruntime_ui {
+    server 127.0.0.1:9050;
+}
+
+upstream maruntime_gateway {
+    server 127.0.0.1:9051;
+}
+
+upstream maruntime_admin_api {
+    server 127.0.0.1:9052;
+}
+
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    # Admin UI (по умолчанию)
+    location / {
+        proxy_pass http://maruntime_ui;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Gateway API
+    location /api/ {
+        rewrite ^/api/(.*) /v1/$1 break;
+        proxy_pass http://maruntime_gateway;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # SSE support
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+    }
+
+    # Auth endpoints (Gateway)
+    location /auth/ {
+        proxy_pass http://maruntime_gateway;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Direct v1 API access
+    location /v1/ {
+        proxy_pass http://maruntime_gateway;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # SSE support
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+    }
+
+    # Admin API
+    location /admin-api/ {
+        rewrite ^/admin-api/(.*) /$1 break;
+        proxy_pass http://maruntime_admin_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Next.js static files (кеширование)
+    location /_next/static/ {
+        proxy_pass http://maruntime_ui;
+        proxy_http_version 1.1;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
+**3. Схема маршрутизации:**
+```
+Клиент → внешний nginx :80/443
+         │
+         ├─ /              → :9050 Admin UI
+         ├─ /api/*         → :9051 Gateway API (rewrite → /v1/*)
+         ├─ /v1/*          → :9051 Gateway API
+         ├─ /auth/*        → :9051 Gateway API
+         └─ /admin-api/*   → :9052 Admin API (rewrite → /*)
+```
+
+**4. Проверка работоспособности:**
+```bash
+# Health checks
+curl http://your-domain.com/v1/health      # Gateway
+curl http://your-domain.com/admin-api/health  # Admin API
+curl http://your-domain.com/               # Admin UI
+```
 
 ### Kubernetes
 Рекомендуется разделить deployment'ы на gateway, admin-api и admin-ui, используя общий ConfigMap для переменных окружения и отдельные Secret для ключей. Helm chart будет добавлен в будущих версиях.
