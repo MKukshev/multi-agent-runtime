@@ -512,12 +512,23 @@ export const gatewayApi = {
     return res.json();
   },
 
-  async chat(model: string, messages: ChatMessage[], chatId?: string): Promise<ChatCompletionResponse> {
+  async chat(
+    model: string,
+    messages: ChatMessage[],
+    chatId?: string,
+    searchAllChats: boolean = false
+  ): Promise<ChatCompletionResponse> {
     const res = await fetch(`${GATEWAY_API_URL}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ model, messages, stream: false, chat_id: chatId }),
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+        chat_id: chatId,
+        search_all_chats: searchAllChats,
+      }),
     });
     return res.json();
   },
@@ -528,13 +539,20 @@ export const gatewayApi = {
   async *chatStream(
     model: string,
     messages: ChatMessage[],
-    chatId?: string
+    chatId?: string,
+    searchAllChats: boolean = false
   ): AsyncGenerator<AgentEvent, void, unknown> {
     const res = await fetch(`${GATEWAY_API_URL}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ model, messages, stream: true, chat_id: chatId }),
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true,
+        chat_id: chatId,
+        search_all_chats: searchAllChats,
+      }),
     });
     
     // Extract session_id from response header

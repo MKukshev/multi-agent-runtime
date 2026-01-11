@@ -83,7 +83,7 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
 
     @property
     def available_tools(self) -> Sequence[str]:
-        return [tool.tool_name or tool.__name__.lower() for tool in self.toolkit]
+        return [tool.tool_name or tool.__name__ for tool in self.toolkit]
 
     @abc.abstractmethod
     async def run(self) -> AsyncGenerator[SSEEvent, None]:
@@ -96,7 +96,11 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
         return list(self._prompt_tool_names or self.available_tools)
 
     def _system_prompt(self) -> str:
-        return PromptLoader.get_system_prompt(self.prompt_tool_names, self.prompts_config)
+        return PromptLoader.get_system_prompt(
+            self.prompt_tool_names,
+            self.prompts_config,
+            extra_context=self._context_data,
+        )
 
     def _initial_user_request(self) -> str:
         return PromptLoader.get_initial_user_request(self.task, self.prompts_config)
@@ -194,6 +198,68 @@ class BaseAgent(AgentRegistryMixin, abc.ABC):
                 ordered.append(name)
         ordered.extend([name for name in filtered if name not in required])
         return ordered
+
+    async def _get_tool_config(
+        self,
+        tool_name: str,
+        tool_cls: Type[BaseTool] | None = None,
+    ) -> dict[str, Any] | None:
+        if not self.tool_search_service:
+            return None
+
+        candidates: list[str] = []
+        if tool_name:
+            candidates.append(tool_name)
+        if tool_cls is not None:
+            tool_attr = getattr(tool_cls, "tool_name", None)
+            if tool_attr:
+                candidates.append(tool_attr)
+            candidates.append(tool_cls.__name__)
+
+        for candidate in candidates:
+            config = await self.tool_search_service.get_tool_config(candidate)
+            if config is not None:
+                return config
+        return None
+
+    @staticmethod
+    def _get_tool_setting_int(
+        tool_config: dict[str, Any] | None,
+        key: str,
+        default: int,
+    ) -> int:
+        if not isinstance(tool_config, dict):
+            return default
+
+        sources: list[dict[str, Any]] = []
+        settings = tool_config.get("settings")
+        if isinstance(settings, dict):
+            sources.append(settings)
+        execution = tool_config.get("execution")
+        if isinstance(execution, dict):
+            sources.append(execution)
+        sources.append(tool_config)
+
+        for source in sources:
+            if key in source and source[key] is not None:
+                try:
+                    value = int(source[key])
+                except (TypeError, ValueError):
+                    return default
+                return value if value > 0 else default
+        return default
+
+    @staticmethod
+    def _trim_reasoning_arg(args: dict[str, Any], max_len: int) -> None:
+        reasoning = args.get("reasoning")
+        if isinstance(reasoning, str) and max_len > 0 and len(reasoning) > max_len:
+            args["reasoning"] = reasoning[:max_len]
+
+    @staticmethod
+    def _is_clarification_tool(tool_name: str, tool_cls: Type[BaseTool] | None = None) -> bool:
+        if tool_cls is not None and tool_cls.__name__ == "ClarificationTool":
+            return True
+        return tool_name.lower() in {"clarificationtool", "clarification_tool"}
 
     async def _ensure_session_state(self) -> None:
         if self.session_service:

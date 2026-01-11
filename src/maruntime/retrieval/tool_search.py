@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -33,6 +33,7 @@ class ToolSearchService:
         self._embedding_provider = embedding_provider or EmbeddingProvider()
         self._default_top_k = default_top_k
         self._cache: dict[str, dict[str, list[str]]] = {}
+        self._tool_config_cache: dict[str, dict[str, Any]] = {}
 
     async def search(
         self,
@@ -85,6 +86,20 @@ class ToolSearchService:
         self._cache.setdefault(session_id, {})[query] = [tool.name for tool in limited]
         return ToolSearchResult(tools=limited, used_cache=False)
 
+    async def get_tool_config(self, tool_name: str) -> dict[str, Any] | None:
+        """Fetch tool config by name with normalization and caching."""
+        if not tool_name:
+            return None
+
+        normalized = self._normalize_tool_name(tool_name)
+        if normalized in self._tool_config_cache:
+            return self._tool_config_cache[normalized]
+        if self._tool_config_cache:
+            return None
+
+        await self._load_tool_configs()
+        return self._tool_config_cache.get(normalized)
+
     async def _fetch_active_tools(
         self,
         session: AsyncSession,
@@ -95,6 +110,17 @@ class ToolSearchService:
             stmt = stmt.where(Tool.name.in_(available_tools))
         result = await session.scalars(stmt)
         return list(result.all())
+
+    async def _load_tool_configs(self) -> None:
+        async with self._session_factory() as session:
+            tools = await self._fetch_active_tools(session, None)
+
+        config_cache: dict[str, dict[str, Any]] = {}
+        for tool in tools:
+            normalized = self._normalize_tool_name(tool.name)
+            if normalized:
+                config_cache[normalized] = tool.config or {}
+        self._tool_config_cache = config_cache
 
     async def _load_tools_by_names(self, names: Sequence[str]) -> list[Tool]:
         if not names:
@@ -109,6 +135,10 @@ class ToolSearchService:
             if tool:
                 ordered.append(tool)
         return ordered
+
+    @staticmethod
+    def _normalize_tool_name(name: str) -> str:
+        return "".join(char for char in name.lower() if char.isalnum())
 
     @staticmethod
     def _apply_policy_filters(

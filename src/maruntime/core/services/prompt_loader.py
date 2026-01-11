@@ -123,6 +123,7 @@ class PromptLoader:
         cls,
         available_tools: Iterable[str],
         prompts_config: PromptsConfig | None = None,
+        extra_context: dict[str, object] | None = None,
     ) -> str:
         """Render system prompt with available tools and current date.
         
@@ -131,16 +132,20 @@ class PromptLoader:
         - {current_date} - Current datetime
         """
         cfg = prompts_config or PromptsConfig()
-        try:
-            return cfg.system_prompt.format(
-                available_tools=cls._render_tools(available_tools),
-                current_date=cls._current_datetime(),
-            )
-        except KeyError as e:
-            # If placeholder is missing, return template as-is with available_tools only
-            return cfg.system_prompt.format(
-                available_tools=cls._render_tools(available_tools),
-            )
+        format_args = {
+            "available_tools": cls._render_tools(available_tools),
+            "current_date": cls._current_datetime(),
+        }
+        if extra_context:
+            for key, value in extra_context.items():
+                if key in {"available_tools", "current_date", "task", "clarifications"}:
+                    continue
+                format_args[key] = value
+        class _SafeDict(dict):
+            def __missing__(self, key: str) -> str:  # pragma: no cover - defensive
+                return ""
+
+        return cfg.system_prompt.format_map(_SafeDict(format_args))
 
     @classmethod
     def get_initial_user_request(

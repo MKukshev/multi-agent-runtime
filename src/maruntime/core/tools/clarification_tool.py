@@ -24,7 +24,7 @@ class ClarificationTool(PydanticTool):
 
     reasoning: str = Field(
         description="Why clarification is needed (1-2 sentences MAX)",
-        max_length=200,
+        max_length=500,
     )
     unclear_terms: list[str] = Field(
         description="List of unclear terms (brief, 1-3 words each)",
@@ -58,4 +58,3 @@ class ClarificationTool(PydanticTool):
 
 
 __all__ = ["ClarificationTool"]
-

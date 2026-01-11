@@ -19,7 +19,7 @@ class DelegateTemplateTool(BaseTool):
     a router instance injected via __init__.
     """
 
-    tool_name = "agent.delegate_template"
+    tool_name = "DelegateTemplateTool"
     description = "Invoke another template by name and return its streamed response."
 
     def __init__(self, router: AgentRouter) -> None:
@@ -40,4 +40,3 @@ class DelegateTemplateTool(BaseTool):
 
 
 __all__ = ["DelegateTemplateTool"]
-

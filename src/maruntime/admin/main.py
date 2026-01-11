@@ -41,7 +41,7 @@ app = FastAPI(title="Multi-Agent Admin API", version="0.1.0")
 # CORS middleware for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -148,7 +148,7 @@ class AgentInstanceRead(BaseModel):
     is_enabled: bool
     auto_start: bool
     priority: int
-    config_overrides: dict[str, Any] = Field(default_factory=dict)
+    config_overrides: Optional[dict[str, Any]] = Field(default=None)
     total_sessions: int = 0
     total_messages: int = 0
     total_tool_calls: int = 0

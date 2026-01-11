@@ -17,8 +17,8 @@ class ChatHistorySearchTool(PydanticTool):
 
     query: str = Field(description="Search query")
     scope: str = Field(
-        default="all",
-        description="'current' for current chat, 'all' for all user chats",
+        default="auto",
+        description="'current' for current chat, 'all' for all user chats, 'auto' to use chat scope setting",
     )
     limit: int = Field(default=5, ge=1, le=20, description="Max results to return")
     per_session: int = Field(
@@ -43,7 +43,7 @@ class ChatHistorySearchTool(PydanticTool):
         description="Optional override for session ID (if scope is current)",
     )
 
-    def _get_context_value(self, context: AgentContext, key: str) -> str | None:
+    def _get_context_value(self, context: AgentContext, key: str) -> Any | None:
         value = getattr(context, key, None)
         if value:
             return value
@@ -54,13 +54,29 @@ class ChatHistorySearchTool(PydanticTool):
             return getattr(custom, key)
         return None
 
+    def _resolve_scope(self, context: AgentContext) -> str:
+        ui_scope = self._get_context_value(context, "search_all_chats")
+        if isinstance(ui_scope, bool):
+            return "all" if ui_scope else "current"
+        if isinstance(ui_scope, str):
+            normalized = ui_scope.strip().lower()
+            if normalized in {"true", "1", "yes", "all"}:
+                return "all"
+            if normalized in {"false", "0", "no", "current"}:
+                return "current"
+
+        scope = (self.scope or "").strip().lower()
+        if not scope or scope == "auto":
+            return "all"
+        return scope
+
     async def __call__(
         self,
         context: AgentContext,
         config: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> str:
-        scope = self.scope.strip().lower()
+        scope = self._resolve_scope(context)
         if scope not in {"all", "current"}:
             return "Error: scope must be 'all' or 'current'"
 

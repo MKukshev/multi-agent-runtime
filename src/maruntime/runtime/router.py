@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import AsyncGenerator, Type
+from typing import Any, AsyncGenerator, Type
 
 from maruntime.retrieval.tool_search import ToolSearchService
 from maruntime.runtime.templates import TemplateRuntimeConfig, TemplateService
@@ -60,6 +60,7 @@ class AgentRouter:
         session_id: str | None = None,
         entry: AgentDirectoryEntry | None = None,
         user_id: str | None = None,
+        context_data: dict[str, Any] | None = None,
     ) -> RouteResult:
         """Search for a suitable template and execute the matching agent.
         
@@ -91,6 +92,7 @@ class AgentRouter:
             tool_search_service=self._tool_search_service,
             rules_engine=self._rules_engine,
             user_id=user_id,  # Pass user_id for new session creation
+            context_data=context_data,
         )
         
         # Return RouteResult with async generator - events stream in real-time

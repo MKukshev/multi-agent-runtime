@@ -199,6 +199,9 @@ class FlexibleToolCallingAgent(BaseAgent):
         
         self._log_agent_start()
 
+        clarification_pending = bool(self._context_data.get("clarification_requested"))
+        waiting_for_clarification = False
+
         # Build initial conversation
         system_prompt = self._system_prompt()
         if system_prompt:
@@ -305,6 +308,14 @@ class FlexibleToolCallingAgent(BaseAgent):
                                 "content": result,
                             })
 
+                            if self._agent_context.state == AgentStatesEnum.WAITING_FOR_CLARIFICATION:
+                                self._context_data["clarification_requested"] = True
+                                await self._persist_context()
+                                final_result = result
+                                waiting_for_clarification = True
+                                self._finished = True
+                                break
+
                             # Check if reasoning indicates completion
                             if tool_name.lower() in REASONING_TOOLS:
                                 self._collected_reasoning.append(result)
@@ -378,6 +389,10 @@ class FlexibleToolCallingAgent(BaseAgent):
                 final_result = await self._generate_free_form_answer()
                 self._agent_context.state = AgentStatesEnum.COMPLETED
 
+        if clarification_pending and not waiting_for_clarification:
+            self._context_data["clarification_requested"] = False
+            await self._persist_context()
+
         # Finalize
         if not final_result:
             final_result = "Unable to complete the task. Please try rephrasing your question."
@@ -396,12 +411,16 @@ class FlexibleToolCallingAgent(BaseAgent):
     def _build_tools_schema(self) -> list[dict[str, Any]]:
         """Build tools schema EXCLUDING FinalAnswerTool."""
         tools = []
+        skip_clarification = bool(self._context_data.get("clarification_requested"))
         for tool_cls in self.toolkit:
             name = getattr(tool_cls, "tool_name", None) or tool_cls.__name__
-            
+
             # EXCLUDE FinalAnswerTool - we use free-form instead!
             if name.lower() in FINAL_ANSWER_TOOLS:
                 self._get_logger().debug(f"⏭️ Excluding {name} (using free-form answer)")
+                continue
+            if skip_clarification and name.lower() in {"clarificationtool", "clarification_tool"}:
+                self._get_logger().debug(f"⏭️ Excluding {name} (clarification already requested)")
                 continue
 
             description = tool_cls.__doc__ or f"Tool: {name}"
@@ -436,6 +455,13 @@ class FlexibleToolCallingAgent(BaseAgent):
 
     async def _execute_tool(self, tool_name: str, args_json: str) -> str:
         """Execute a tool by name."""
+        if tool_name.lower() in {"clarificationtool", "clarification_tool"}:
+            if self._context_data.get("clarification_requested"):
+                return (
+                    "Error: ClarificationTool already requested for this session. "
+                    "Proceed with other tools."
+                )
+
         tool_cls = None
         for tc in self.toolkit:
             tc_name = getattr(tc, "tool_name", None) or tc.__name__
@@ -452,10 +478,22 @@ class FlexibleToolCallingAgent(BaseAgent):
             self._agent_context.user_id = self._user_id
             if self.session_context:
                 self._agent_context.session_id = self.session_context.session_id
+            self._agent_context.custom_context = dict(self._context_data)
+
+            tool_config = await self._get_tool_config(tool_name, tool_cls)
+            if self._is_clarification_tool(tool_name, tool_cls):
+                default_max_reasoning = 500
+                max_reasoning_len = self._get_tool_setting_int(
+                    tool_config,
+                    "max_reasoning_len",
+                    default_max_reasoning,
+                )
+                max_reasoning_len = min(max_reasoning_len, default_max_reasoning)
+                self._trim_reasoning_arg(args, max_reasoning_len)
 
             if issubclass(tool_cls, PydanticTool):
                 tool_instance = tool_cls(**args)
-                result = await tool_instance(context=self._agent_context, config=None)
+                result = await tool_instance(context=self._agent_context, config=tool_config or {})
             else:
                 tool_instance = tool_cls()
                 result = await tool_instance(context=self._agent_context, **args)

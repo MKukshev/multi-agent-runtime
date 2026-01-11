@@ -80,7 +80,7 @@ class BaseTool(ToolRegistryMixin, abc.ABC):
         super().__init_subclass__(**kwargs)
         if cls.__name__ in {"BaseTool", "MCPBaseTool"}:
             return
-        cls.tool_name = cls.tool_name or cls.__name__.lower()
+        cls.tool_name = cls.tool_name or cls.__name__
         cls.description = cls.description or (cls.__doc__ or "")
 
     @abc.abstractmethod
@@ -127,7 +127,7 @@ class PydanticTool(BaseModel, ToolRegistryMixin):
         excluded = {"PydanticTool", "MCPPydanticTool"}
         if cls.__name__ in excluded:
             return
-        cls.tool_name = cls.tool_name or cls.__name__.lower()
+        cls.tool_name = cls.tool_name or cls.__name__
         cls.description = cls.description or (cls.__doc__ or "")
 
     async def __call__(

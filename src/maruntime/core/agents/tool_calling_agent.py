@@ -499,11 +499,23 @@ class ToolCallingAgent(BaseAgent):
             self._agent_context.user_id = self._user_id
             if self.session_context:
                 self._agent_context.session_id = self.session_context.session_id
+            self._agent_context.custom_context = dict(self._context_data)
+
+            tool_config = await self._get_tool_config(tool_name, tool_cls)
+            if self._is_clarification_tool(tool_name, tool_cls):
+                default_max_reasoning = 500
+                max_reasoning_len = self._get_tool_setting_int(
+                    tool_config,
+                    "max_reasoning_len",
+                    default_max_reasoning,
+                )
+                max_reasoning_len = min(max_reasoning_len, default_max_reasoning)
+                self._trim_reasoning_arg(args, max_reasoning_len)
 
             # Instantiate and call the tool
             if issubclass(tool_cls, PydanticTool):
                 tool_instance = tool_cls(**args)
-                result = await tool_instance(context=self._agent_context, config=None)
+                result = await tool_instance(context=self._agent_context, config=tool_config or {})
             else:
                 tool_instance = tool_cls()
                 result = await tool_instance(context=self._agent_context, **args)

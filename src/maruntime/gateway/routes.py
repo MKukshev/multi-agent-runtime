@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any, AsyncGenerator, Callable, Sequence
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
+from openai import APIConnectionError, APIStatusError, AuthenticationError, OpenAIError
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +28,10 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     top_k: int | None = None
     chat_id: str | None = None  # Optional: continue existing chat
+    search_all_chats: bool = Field(
+        default=False,
+        description="Search scope for chat memory (false=current chat, true=all chats)",
+    )
 
 
 class ModelResponse(BaseModel):
@@ -78,6 +84,52 @@ async def _aggregate_content(events: AsyncGenerator[Any, None]) -> str:
         if "content" in delta:
             chunks.append(delta["content"])
     return "".join(chunks)
+
+
+async def _error_stream(error_message: str, error_type: str = "llm_error") -> AsyncGenerator[str, None]:
+    """Generate SSE error event stream for client."""
+    error_event = {
+        "event": "error",
+        "data": {
+            "error": error_message,
+            "type": error_type,
+        }
+    }
+    yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+    yield "data: [DONE]\n\n"
+
+
+def _format_llm_error(exc: Exception) -> tuple[str, str, int]:
+    """Format LLM exception into user-friendly message, error type, and HTTP status code."""
+    if isinstance(exc, APIConnectionError):
+        return (
+            f"Модель недоступна: не удалось подключиться к LLM серверу. Проверьте, что сервер запущен. ({exc})",
+            "connection_error",
+            503,
+        )
+    if isinstance(exc, AuthenticationError):
+        return (
+            f"Ошибка аутентификации LLM: неверный API ключ. ({exc})",
+            "auth_error",
+            401,
+        )
+    if isinstance(exc, APIStatusError):
+        return (
+            f"Ошибка LLM API (статус {exc.status_code}): {exc.message}",
+            "api_error",
+            502,
+        )
+    if isinstance(exc, OpenAIError):
+        return (
+            f"Ошибка LLM: {exc}",
+            "llm_error",
+            500,
+        )
+    return (
+        f"Внутренняя ошибка агента: {exc}",
+        "internal_error",
+        500,
+    )
 
 
 def create_gateway_router(
@@ -139,6 +191,8 @@ def create_gateway_router(
         # Get authenticated user (optional for backwards compatibility)
         user = getattr(request.state, 'user', None)
         user_id = user.id if user else None
+        search_all_chats = bool(body.search_all_chats)
+        context_data = {"search_all_chats": search_all_chats}
 
         session_id: str | None = body.chat_id  # Use provided chat_id if available
         entry: AgentDirectoryEntry | None = None
@@ -169,6 +223,16 @@ def create_gateway_router(
         if entry is None:
             entry = await _entry_for_model(body.model)
 
+        if _session_factory and session_id:
+            async with _session_factory() as db_session:
+                session_repo = SessionRepository(db_session)
+                sess = await session_repo.get_session(session_id)
+                if sess:
+                    context = dict(sess.context or {})
+                    context["search_all_chats"] = search_all_chats
+                    await session_repo.update_context(session_id, context)
+                    await db_session.commit()
+
         effective_model = entry.template.name if entry else body.model
         try:
             security.validate(model=effective_model, prompt=task)
@@ -197,6 +261,7 @@ def create_gateway_router(
             session_id=session_id,
             entry=entry,
             user_id=user_id,  # Pass user_id for new session creation
+            context_data=context_data if session_id is None else None,
         )
         resolved_session = session_id or (result.session_context.session_id if result.session_context else None)
 
@@ -276,6 +341,18 @@ def create_gateway_router(
                             delta = data.get("choices", [{}])[0].get("delta", {})
                             if "content" in delta:
                                 accumulated_content.append(delta["content"])
+                except (APIConnectionError, AuthenticationError, APIStatusError, OpenAIError) as exc:
+                    error_msg, error_type, _ = _format_llm_error(exc)
+                    log_with_correlation(logger, logging.ERROR, error_msg, session_id=_resolved_session)
+                    async for chunk in _error_stream(error_msg, error_type):
+                        yield chunk
+                    return
+                except Exception as exc:
+                    error_msg = f"Внутренняя ошибка агента: {exc}"
+                    log_with_correlation(logger, logging.ERROR, error_msg, session_id=_resolved_session)
+                    async for chunk in _error_stream(error_msg, "internal_error"):
+                        yield chunk
+                    return
                 finally:
                     await release_instance()
                     
@@ -324,7 +401,18 @@ def create_gateway_router(
         # Release instance for non-streaming
         await release_instance()
 
-        content = await _aggregate_content(result.events)
+        try:
+            content = await _aggregate_content(result.events)
+        except (APIConnectionError, AuthenticationError, APIStatusError, OpenAIError) as exc:
+            error_msg, error_type, status_code = _format_llm_error(exc)
+            log_with_correlation(logger, logging.ERROR, error_msg, session_id=resolved_session)
+            metrics.record_completion(model=body.model, status="error", session_id=resolved_session)
+            raise HTTPException(status_code=status_code, detail=error_msg) from exc
+        except Exception as exc:
+            error_msg = f"Внутренняя ошибка агента: {exc}"
+            log_with_correlation(logger, logging.ERROR, error_msg, session_id=resolved_session)
+            metrics.record_completion(model=body.model, status="error", session_id=resolved_session)
+            raise HTTPException(status_code=500, detail=error_msg) from exc
         
         # Update resolved_session after agent execution (session is created during execution)
         session_ctx = result.get_session_context()

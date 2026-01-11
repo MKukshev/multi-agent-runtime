@@ -37,6 +37,7 @@ export default function ChatPage() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [chatTitle, setChatTitle] = useState<string>('New Chat');
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
+  const [searchAllChats, setSearchAllChats] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   // Refs to track accumulated data during streaming
@@ -344,8 +345,8 @@ export default function ChatPage() {
         .concat(userMessage)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      // Use chat_id if we have one
-      for await (const event of gatewayApi.chatStream(selectedModel, chatMessages, selectedChatId || undefined)) {
+      // Use chat_id if we have one, pass search scope
+      for await (const event of gatewayApi.chatStream(selectedModel, chatMessages, selectedChatId || undefined, searchAllChats)) {
         processStreamEvent(event);
         
         // Capture new chat_id from session header if this is a new chat
@@ -410,7 +411,7 @@ export default function ChatPage() {
         .concat(userMessage)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      const response = await gatewayApi.chat(selectedModel, chatMessages, selectedChatId || undefined);
+      const response = await gatewayApi.chat(selectedModel, chatMessages, selectedChatId || undefined, searchAllChats);
 
       // Capture new chat_id from response if this is a new chat
       if (!selectedChatId && response.id && response.id !== selectedModel) {
@@ -498,6 +499,21 @@ export default function ChatPage() {
             </p>
           </div>
           <div className="flex items-center gap-4">
+            {/* Search scope toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-[var(--muted)]">Поиск:</span>
+              <button
+                onClick={() => setSearchAllChats(!searchAllChats)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  searchAllChats
+                    ? 'bg-[var(--primary)] text-white'
+                    : 'bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--background)]'
+                }`}
+                title={searchAllChats ? 'Поиск по всем чатам пользователя' : 'Поиск только в текущем чате'}
+              >
+                {searchAllChats ? '🔍 Все чаты' : '💬 Текущий чат'}
+              </button>
+            </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
